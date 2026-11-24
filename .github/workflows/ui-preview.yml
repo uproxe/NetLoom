@@ -32,23 +32,43 @@ jobs:
           sudo apt-get -o Acquire::Retries=3 install -y xvfb xdotool imagemagick libdbus-glib-1-2 fonts-noto-core fonts-noto-color-emoji
 
       - name: Движок для предпросмотра
+        id: engine
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          V="$(bash engine/latest-version.sh)"
-          echo "Gecko ESR $V"
-          curl -fL --retry 5 -o engine.tar.xz "https://archive.mozilla.org/pub/firefox/releases/${V}esr/linux-x86_64/ru/firefox-${V}esr.tar.xz" \
-            || curl -fL --retry 5 -o engine.tar.bz2 "https://archive.mozilla.org/pub/firefox/releases/${V}esr/linux-x86_64/ru/firefox-${V}esr.tar.bz2"
-          if [ -f engine.tar.xz ]; then tar -xJf engine.tar.xz; else tar -xjf engine.tar.bz2; fi
-          bash tools/preview-rebrand.sh firefox
-          bash tools/apply-ui.sh firefox
+          # свой движок NetLoom для Linux, если он уже собран; иначе — тот же Gecko ESR от Mozilla с нашим брендом
+          TAG=""
+          for e in $(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[] | select(.tag_name | startswith("engine-")) | .tag_name' | sort -V -r); do
+            if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$e" --jq '.assets[].name' | grep -Eq -e '-linux64\.tar\.'; then TAG="$e"; break; fi
+          done
+          if [ -n "$TAG" ]; then
+            echo "Движок NetLoom: $TAG"
+            gh release download "$TAG" --pattern '*-linux64.tar.*' --dir engine-dl
+            tar -xf engine-dl/netloom-engine-*-linux64.tar.*
+            APPDIR=netloom
+          else
+            V="$(bash engine/latest-version.sh)"
+            echo "Gecko ESR $V"
+            curl -fL --retry 5 -o engine.tar.xz "https://archive.mozilla.org/pub/firefox/releases/${V}esr/linux-x86_64/ru/firefox-${V}esr.tar.xz" \
+              || curl -fL --retry 5 -o engine.tar.bz2 "https://archive.mozilla.org/pub/firefox/releases/${V}esr/linux-x86_64/ru/firefox-${V}esr.tar.bz2"
+            if [ -f engine.tar.xz ]; then tar -xJf engine.tar.xz; else tar -xjf engine.tar.bz2; fi
+            bash tools/preview-rebrand.sh firefox
+            APPDIR=firefox
+          fi
+          bash tools/apply-ui.sh "$APPDIR"
+          echo "dir=$APPDIR" >> "$GITHUB_OUTPUT"
 
       - name: Снимки
-        run: bash tools/ui-preview.sh firefox preview
+        run: bash tools/ui-preview.sh "${{ steps.engine.outputs.dir }}" preview
 
       - name: Снимки в ветку preview
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # снимки Android (их делает workflow «Android») сохраняем
+          git clone -q --depth 1 -b preview "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" /tmp/old-preview || true
+          [ -d /tmp/old-preview/android ] && cp -r /tmp/old-preview/android preview/
           cd preview
           cat > README.md <<MD
           # Снимки интерфейса NetLoom
@@ -63,6 +83,12 @@ jobs:
           ![настройки](6-nastroiki.png)
           ![настройки, низ](7-nastroiki-niz.png)
           ![опасный сайт](8-opasnyi-sait.png)
+
+          ## Android
+
+          ![старт](android/1-start.png) ![сайт](android/2-site.png) ![меню](android/3-menu.png)
+          ![настройки](android/4-settings.png) ![настройки](android/5-settings-2.png)
+          ![опасный сайт](android/6-site-2.png) ![VPN](android/7-vpn.png)
           MD
           git init -q
           git checkout -q -b preview
