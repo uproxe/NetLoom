@@ -11,6 +11,9 @@ export DISPLAY=:99
 Xvfb :99 -screen 0 1366x860x24 >/dev/null 2>&1 &
 sleep 2
 PROFILE="$(mktemp -d)"
+# тестовая запись в списке опасных сайтов — проверить блокировку по-настоящему
+mkdir -p "$APP/nlui/filters"
+printf '! test\n||danger-test.invalid^\n' > "$APP/nlui/filters/urlhaus.txt"
 cat > "$PROFILE/user.js" <<'PREFS'
 user_pref("devtools.console.stdout.chrome", true);
 user_pref("browser.dom.window.dump.enabled", true);
@@ -44,7 +47,7 @@ xdotool key --clearmodifiers End; sleep 2
 shot 7-nastroiki-niz
 # страница предупреждения об опасном сайте
 xdotool key --clearmodifiers ctrl+l; sleep 1
-xdotool type --delay 15 "about:blocked?kind=phishing&url=https%3A%2F%2Fsecure-login.example%2Fbank"
+xdotool type --delay 15 "http://danger-test.invalid/download/setup.exe"
 xdotool key Return; sleep 4
 shot 8-opasnyi-sait
 # приватное окно — последним
