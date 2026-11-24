@@ -1,0 +1,78 @@
+name: Проверка упаковки
+
+# Проверяет сборку установщика Windows, пакета .deb и образа .dmg на поддельном
+# «движке» — чтобы ошибки в упаковке находились сразу, а не после многочасовой сборки движка.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "tools/package.sh"
+      - "tools/windows/**"
+      - "tools/linux/**"
+      - "tools/macos/**"
+      - ".github/workflows/package-test.yml"
+
+permissions:
+  contents: read
+
+env:
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  windows:
+    name: Windows
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get -o Acquire::Retries=3 update && sudo apt-get install -y nsis
+      - name: Упаковка
+        run: |
+          mkdir -p fake/netloom/browser && cp /bin/true fake/netloom/netloom.exe
+          (cd fake && zip -qr ../netloom-engine-0.0.1-win64.zip netloom)
+          bash tools/package.sh win64 netloom-engine-0.0.1-win64.zip dist
+          ls -la dist
+
+  linux:
+    name: Linux
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Упаковка
+        run: |
+          mkdir -p fake/netloom/browser && cp /bin/true fake/netloom/netloom
+          tar -C fake -cJf netloom-engine-0.0.1-linux64.tar.xz netloom
+          bash tools/package.sh linux64 netloom-engine-0.0.1-linux64.tar.xz dist
+          dpkg-deb --contents dist/*.deb | head -20
+          sudo dpkg -i --force-depends dist/*.deb && ls -la /usr/bin/netloom /usr/share/applications/netloom.desktop && sudo dpkg -r netloom
+
+  mac:
+    name: macOS
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install librsvg || true
+      - name: Упаковка
+        run: |
+          APP="fake/NetLoom.app/Contents"
+          mkdir -p "$APP/MacOS" "$APP/Resources/browser"
+          cp /usr/bin/true "$APP/MacOS/netloom"
+          cat > "$APP/Info.plist" <<'PL'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>CFBundleExecutable</key><string>netloom</string>
+            <key>CFBundleIdentifier</key><string>io.github.uproxe.netloom</string>
+            <key>CFBundleName</key><string>NetLoom</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>CFBundleIconFile</key><string>firefox.icns</string>
+          </dict></plist>
+          PL
+          hdiutil create -volname NetLoom -srcfolder fake -format UDZO netloom-engine-0.0.1-mac-universal.dmg
+          bash tools/package.sh mac netloom-engine-0.0.1-mac-universal.dmg dist
+          MNT="$(mktemp -d)"; hdiutil attach -nobrowse -readonly -mountpoint "$MNT" dist/*.dmg
+          ls -la "$MNT" "$MNT/NetLoom.app/Contents/Resources" "$MNT/NetLoom.app/Contents/Resources/cores"/*
+          codesign --verify --deep --strict "$MNT/NetLoom.app" && echo "подпись в порядке"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIconName" "$MNT/NetLoom.app/Contents/Info.plist" || true
+          hdiutil detach "$MNT"
