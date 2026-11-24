@@ -99,7 +99,12 @@ echo "    mozconfig:"; sed 's/^/      /' "$SRC/mozconfig" | tail -8
 # ───────── 6. Сборка ─────────
 step "6/7 Сборка (это долго)"
 ulimit -n 4096 || true
-./mach build
+if [ -n "${NETLOOM_BUILD_TIMEOUT:-}" ]; then
+  # 124 = не уложились во время; кэш компиляции сохранится, следующий запуск продолжит
+  timeout --signal=INT --kill-after=2m "$NETLOOM_BUILD_TIMEOUT" ./mach build
+else
+  ./mach build
+fi
 
 # ───────── 7. Пакет ─────────
 step "7/7 Упаковка (английский + русский)"

@@ -15,6 +15,10 @@ on:
         description: "Собрать заново, даже если эта версия уже есть"
         type: boolean
         default: false
+      attempt:
+        description: "Служебное: номер продолжения сборки"
+        required: false
+        default: "1"
   schedule:
     - cron: "23 2 * * *"
 
@@ -79,12 +83,20 @@ jobs:
       - name: Кэш компиляции
         uses: mozilla-actions/sccache-action@main
 
+      - name: Доступ кэша компиляции к хранилищу GitHub
+        uses: actions/github-script@v7
+        with:
+          script: |
+            for (const k of ["ACTIONS_CACHE_URL", "ACTIONS_RESULTS_URL", "ACTIONS_RUNTIME_TOKEN", "ACTIONS_CACHE_SERVICE_V2"]) {
+              if (process.env[k]) core.exportVariable(k, process.env[k]);
+            }
+
       - name: Системные пакеты
         run: |
           sudo apt-get -o Acquire::Retries=3 update
           sudo apt-get -o Acquire::Retries=3 install -y \
-            build-essential curl git m4 msitools nasm p7zip-full python3 python3-pip \
-            python3-venv unzip uuid-dev yasm zip zstd
+            build-essential curl gcc-multilib git libc6-i386 m4 msitools nasm p7zip-full \
+            python3 python3-pip python3-venv unzip uuid-dev yasm zip zstd
           df -h /
 
       - name: Кэш инструментов кросс-сборки
@@ -94,13 +106,40 @@ jobs:
           key: win-cross-v1-${{ hashFiles('engine/ESR_MAJOR') }}
 
       - name: Сборка
-        run: bash engine/build.sh "${{ needs.check.outputs.version }}"
+        id: build
+        env:
+          # GitHub даёт задаче не больше 6 часов; оставляем запас на сохранение кэша
+          NETLOOM_BUILD_TIMEOUT: "310m"
+        run: |
+          set +e
+          bash engine/build.sh "${{ needs.check.outputs.version }}"
+          code=$?
+          if [ $code -eq 124 ]; then
+            echo "::warning::Сборка не уместилась в отведённое время — продолжу в следующем запуске (кэш сохранён)"
+            echo "unfinished=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          exit $code
+
+      - name: Продолжить сборку в новом запуске
+        if: steps.build.outputs.unfinished == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ needs.check.outputs.version }}
+          ATTEMPT: ${{ inputs.attempt || '1' }}
+        run: |
+          if [ "$ATTEMPT" -ge 5 ]; then
+            echo "::error::Сборка не завершилась за 5 запусков"
+            exit 1
+          fi
+          gh workflow run engine.yml --ref "${GITHUB_REF_NAME}" -f version="$V" -f force=true -f attempt=$((ATTEMPT + 1))
 
       - name: Место на диске после сборки
         if: always()
         run: df -h /; sccache --show-stats || true
 
       - name: Публикация
+        if: steps.build.outputs.unfinished != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           V: ${{ needs.check.outputs.version }}
