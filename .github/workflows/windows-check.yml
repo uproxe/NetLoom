@@ -1,0 +1,61 @@
+name: Проверка на Windows
+
+# Ставит готовый установщик NetLoom на чистую Windows, запускает браузер без окна
+# и проверяет, что всё на месте: файлы, ярлыки, регистрация браузера, удаление.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Релиз, например v1.0.0"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    name: Установка и запуск
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Установщик
+        shell: bash
+        run: |
+          TAG="${{ inputs.tag }}"; [ -n "$TAG" ] || TAG="v$(cat VERSION)"
+          gh release download "$TAG" --pattern '*-windows-x64-setup.exe' --dir dl
+          ls -la dl
+      - name: Установка
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem dl\*-setup.exe | Select-Object -First 1
+          Start-Process $setup.FullName -ArgumentList "/S" -Wait
+          $dir = "$env:LOCALAPPDATA\Programs\NetLoom"
+          Get-ChildItem $dir | Select-Object -First 15 | Format-Table Name, Length
+          if (-not (Test-Path "$dir\netloom.exe")) { throw "netloom.exe не установлен" }
+          if (-not (Test-Path "$dir\cores\xray\xray.exe")) { throw "нет ядра Xray" }
+          Get-ItemProperty "HKCU:\Software\Clients\StartMenuInternet\NetLoom\Capabilities" | Format-List ApplicationName, ApplicationDescription
+          Get-ItemProperty "HKCU:\Software\RegisteredApplications" | Select-Object NetLoom | Format-List
+          if (-not (Test-Path "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\NetLoom.lnk")) { throw "нет ярлыка в меню Пуск" }
+          (Get-Item "$dir\netloom.exe").VersionInfo | Format-List CompanyName, ProductName, FileDescription, LegalCopyright
+      - name: Запуск
+        shell: pwsh
+        run: |
+          $exe = "$env:LOCALAPPDATA\Programs\NetLoom\netloom.exe"
+          $p = Start-Process $exe -ArgumentList "--headless","--screenshot","$env:RUNNER_TEMP\shot.png","about:blank" -PassThru
+          if (-not $p.WaitForExit(120000)) { $p.Kill(); throw "браузер не завершился" }
+          if (-not (Test-Path "$env:RUNNER_TEMP\shot.png")) { throw "снимок не сделан" }
+          Get-Item "$env:RUNNER_TEMP\shot.png" | Format-List Name, Length
+      - name: Удаление
+        shell: pwsh
+        run: |
+          $dir = "$env:LOCALAPPDATA\Programs\NetLoom"
+          Start-Process "$dir\uninstall.exe" -ArgumentList "/S" -Wait
+          Start-Sleep -Seconds 5
+          if (Test-Path "$dir\netloom.exe") { throw "не удалился" }
+          if (Test-Path "HKCU:\Software\Clients\StartMenuInternet\NetLoom") { throw "остались записи в реестре" }
+          "удалён начисто"
