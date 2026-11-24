@@ -1,0 +1,66 @@
+name: Сборка NetLoom
+
+# Собирает готовый браузер: последний движок + интерфейс + ядро VPN + фильтры.
+# Запускается после каждой сборки движка, при изменениях интерфейса и вручную.
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Движок"]
+    types: [completed]
+  push:
+    branches: [main]
+    paths:
+      - "ui/**"
+      - "tools/apply-ui.sh"
+      - "tools/package.sh"
+      - "VERSION"
+      - ".github/workflows/build.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: package
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: Пакет для Windows
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Готовый движок
+        id: engine
+        run: |
+          TAG="$(gh release list --limit 50 --json tagName --jq '[.[] | select(.tagName | startswith("engine-"))][0].tagName')"
+          if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
+            echo "::warning::Движок ещё не собран — пакет будет собран после сборки движка"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Движок: $TAG"
+          mkdir -p engine-dl
+          gh release download "$TAG" --dir engine-dl
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Сборка пакета
+        if: steps.engine.outputs.ready == 'true'
+        run: bash tools/package.sh "$(ls engine-dl/netloom-engine-*.zip | head -1)" dist
+
+      - name: Публикация
+        if: steps.engine.outputs.ready == 'true'
+        run: |
+          VER="$(cat VERSION)"
+          ENGINE="$(cat dist/ENGINE_VERSION)"
+          TAG="v$VER"
+          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$TAG" dist/NetLoom-*.zip \
+            --title "NetLoom $VER" \
+            --notes "Сборка от $(date -u +%Y-%m-%d). Движок: Gecko ESR $ENGINE. Распакуйте архив и запустите NetLoom/netloom.exe." \
+            --latest
