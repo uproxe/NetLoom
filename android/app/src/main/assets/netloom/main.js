@@ -22,8 +22,7 @@ const LISTS = [
 // Опасные сайты: проверка идёт на телефоне, адреса никуда не отправляются
 const SECURITY_LISTS = [
   { id: 'urlhaus', kind: 'malware', urls: ['https://malware-filter.gitlab.io/malware-filter/urlhaus-filter-online.txt', 'https://curbengh.github.io/malware-filter/urlhaus-filter-online.txt'] },
-  { id: 'phishing', kind: 'phishing', urls: ['https://malware-filter.gitlab.io/malware-filter/phishing-filter.txt', 'https://curbengh.github.io/malware-filter/phishing-filter.txt'] },
-  { id: 'pup', kind: 'pup', urls: ['https://malware-filter.gitlab.io/malware-filter/pup-filter.txt', 'https://curbengh.github.io/malware-filter/pup-filter.txt'] }
+  { id: 'phishing', kind: 'phishing', urls: ['https://malware-filter.gitlab.io/malware-filter/phishing-filter.txt', 'https://curbengh.github.io/malware-filter/phishing-filter.txt'] }
 ];
 
 const DEFAULTS = {

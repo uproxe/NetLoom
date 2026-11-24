@@ -143,7 +143,6 @@ cp "$ROOT/ui/nlui/content/lib/netloom-rules.txt" "$RES/nlui/filters/netloom-rule
 step "Списки опасных сайтов"
 fetch_list urlhaus https://malware-filter.gitlab.io/malware-filter/urlhaus-filter-online.txt https://curbengh.github.io/malware-filter/urlhaus-filter-online.txt
 fetch_list phishing https://malware-filter.gitlab.io/malware-filter/phishing-filter.txt https://curbengh.github.io/malware-filter/phishing-filter.txt
-fetch_list pup https://malware-filter.gitlab.io/malware-filter/pup-filter.txt https://curbengh.github.io/malware-filter/pup-filter.txt
 
 step "Лицензии"
 cp "$ROOT/LICENSE" "$RES/LICENSE.txt"

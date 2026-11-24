@@ -31,7 +31,6 @@ fetch_list adguard-russian https://filters.adtidy.org/extension/ublock/filters/1
 fetch_list adguard-tracking https://filters.adtidy.org/extension/ublock/filters/3.txt
 fetch_list urlhaus https://malware-filter.gitlab.io/malware-filter/urlhaus-filter-online.txt https://curbengh.github.io/malware-filter/urlhaus-filter-online.txt
 fetch_list phishing https://malware-filter.gitlab.io/malware-filter/phishing-filter.txt https://curbengh.github.io/malware-filter/phishing-filter.txt
-fetch_list pup https://malware-filter.gitlab.io/malware-filter/pup-filter.txt https://curbengh.github.io/malware-filter/pup-filter.txt
 
 release_asset() {
   python3 - "$1" "$2" "$3" <<'PY'
