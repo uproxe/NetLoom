@@ -7,6 +7,7 @@ package io.github.uproxe.netloom;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.PictureInPictureParams;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.ContentResolver;
@@ -21,6 +22,7 @@ import android.os.Environment;
 import android.provider.MediaStore;
 import android.text.TextUtils;
 import android.util.Patterns;
+import android.util.Rational;
 import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.View;
@@ -163,6 +165,31 @@ public class MainActivity extends Activity implements Engine.Listener {
       engine.shutdown();
     }
     super.onDestroy();
+  }
+
+  // ═════════ видео в отдельном окне ═════════
+
+  /** Если смотрят видео на весь экран и уходят из приложения — видео продолжается в маленьком окне */
+  @Override
+  protected void onUserLeaveHint() {
+    super.onUserLeaveHint();
+    if (fullScreen) enterVideoWindow();
+  }
+
+  private void enterVideoWindow() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
+    try {
+      enterPictureInPictureMode(new PictureInPictureParams.Builder().setAspectRatio(new Rational(16, 9)).build());
+    } catch (Exception e) {
+      Toast.makeText(this, "Окно поверх других приложений недоступно", Toast.LENGTH_SHORT).show();
+    }
+  }
+
+  @Override
+  public void onPictureInPictureModeChanged(boolean inPip, android.content.res.Configuration config) {
+    super.onPictureInPictureModeChanged(inPip, config);
+    toolbar.setVisibility(inPip || fullScreen ? View.GONE : View.VISIBLE);
+    progress.setVisibility(inPip || fullScreen ? View.GONE : View.INVISIBLE);
   }
 
   @Override
@@ -451,6 +478,7 @@ public class MainActivity extends Activity implements Engine.Listener {
     if (page) m.add(0, 7, 0, "Поделиться");
     if (page) m.add(0, 8, 0, "Скопировать адрес");
     if (current != null) m.add(0, 9, 0, current.desktop ? "Мобильная версия сайта" : "Версия для компьютера");
+    if (page && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) m.add(0, 12, 0, "Видео в отдельном окне");
     m.add(0, 10, 0, "Настройки и VPN");
     m.add(0, 11, 0, "Выход");
     pm.setOnMenuItemClickListener(
@@ -467,6 +495,7 @@ public class MainActivity extends Activity implements Engine.Listener {
             case 9: toggleDesktop(); break;
             case 10: openSettings(null); break;
             case 11: exit(); break;
+            case 12: enterVideoWindow(); break;
             default: return false;
           }
           return true;

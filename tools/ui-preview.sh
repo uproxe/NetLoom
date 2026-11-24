@@ -18,6 +18,7 @@ cat > "$PROFILE/user.js" <<'PREFS'
 user_pref("devtools.console.stdout.chrome", true);
 user_pref("browser.dom.window.dump.enabled", true);
 user_pref("netloom.primaryPassword.prompt", false);
+user_pref("netloom.debug", true);
 user_pref("browser.startup.page", 1);
 PREFS
 "$BIN" --profile "$PROFILE" >"$OUT/console.txt" 2>&1 &
@@ -30,6 +31,7 @@ fi
 shot() { import -window root "$OUT/$1.png"; echo "снимок $1"; }
 shot 1-okno
 open_tab() { "$BIN" --profile "$PROFILE" -new-tab "$1" >/dev/null 2>&1; sleep 7; }
+open_tab "https://lenta.ru/"
 open_tab "https://example.com/"
 shot 2-sait
 # кнопки справа в панели адреса: меню (крайняя справа) и VPN

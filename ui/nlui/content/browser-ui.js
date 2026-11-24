@@ -121,6 +121,8 @@
     zoomMenu,
     item("Найти на странице", { command: "cmd_find", key: "key_find" }),
     item("Печать", { command: "cmd_print", key: "printKb" }),
+    // видео с этой страницы — в отдельное окно поверх остальных (его можно двигать и менять размер)
+    item("Видео в отдельном окне", { command: "View:PictureInPicture", key: "key_togglePictureInPicture" }),
     xul("menuseparator"),
     item("Настройки", { run: () => openSettings() }),
     item("Выход", { command: "cmd_quitApplication", key: "key_quitApplication" })

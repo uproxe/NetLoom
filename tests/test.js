@@ -97,28 +97,25 @@ test('неподдерживаемые опции пропускаются', fun
 test('главный документ не блокируется', function () {
   assert(!m('https://ads.example.com/', 'main_frame'));
 });
-test('косметика: общий CSS', function () {
-  const css = eng.genericCSS();
-  assert(css.indexOf('.ad-banner') >= 0);
-  assert(css.indexOf('google_ads') >= 0);
+test('косметика: общая таблица — только «дешёвые» селекторы', function () {
+  const css = eng.genericStylesheet({});
+  assert(css.indexOf('.ad-banner{display:none!important}') >= 0);
+  assert(css.indexOf('google_ads') < 0, 'селектор по атрибуту проверялся бы на каждом элементе — не берём');
   assert(css.indexOf('has-text') < 0, 'расширенный синтаксис не должен попадать');
   assert(css.indexOf('.harmless') < 0, 'глобальное исключение #@#');
-  assert(css.indexOf('display:none!important') > 0);
 });
 test('косметика: исключённые домены', function () {
   const ex = eng.genericExcludedDomains();
   ['nohide.com', 'example.org', 'nogeneric.org', 'goodsite.org'].forEach(function (d) { assert(ex.indexOf(d) >= 0, d); });
 });
-test('косметика: сайт со своими правилами', function () {
-  const css = eng.cosmeticFor('www.example.org', true);
+test('косметика: правила одного сайта', function () {
+  const css = eng.cosmeticFor('www.example.org');
   assert(css.indexOf('.sponsored') >= 0);
   assert(css.indexOf('.promo') >= 0);
-  assert(css.indexOf('.ad-banner') < 0, 'example.org#@#.ad-banner');
-  assert(css.indexOf('google_ads') >= 0, 'остальные общие селекторы применяются');
-  const sub = eng.cosmeticFor('sub.example.org', true);
-  assert(sub.indexOf('.promo') < 0);
-  assert.strictEqual(eng.cosmeticFor('nogeneric.org', true), '');
-  assert.strictEqual(eng.cosmeticFor('plain.com', false), '');
+  assert(css.indexOf('.ad-banner') < 0, 'общие правила — в общей таблице');
+  assert(eng.cosmeticFor('sub.example.org').indexOf('.promo') < 0, '~sub.example.org');
+  assert.strictEqual(eng.cosmeticFor('goodsite.org'), '', '$document');
+  assert.strictEqual(eng.cosmeticFor('plain.com'), '');
 });
 test('базовый домен', function () {
   assert.strictEqual(F.baseDomain('a.b.example.co.uk'), 'example.co.uk');
@@ -147,25 +144,8 @@ test('синтаксис AdGuard/uBO не ломает разбор', function (
   assert(!e.match({ url: 'https://x.com/a', host: 'x.com', type: 'script', docHost: 'p.ru' }));
   assert(e.match({ url: 'https://z.com/a', host: 'z.com', type: 'xmlhttprequest', docHost: 'p.ru' }));
   assert(!e.match({ url: 'https://z.com/a', host: 'z.com', type: 'image', docHost: 'p.ru' }));
-  assert.strictEqual(e.userStylesheet({}).indexOf('scriptlet'), -1);
-});
-
-test('защита от опасных сайтов блокирует сами страницы', function () {
-  const e = new F.Engine({ security: true });
-  e.addLists(['! URLhaus\n||malware.example^\n||1.2.3.4/payload.exe\n||phish.example^$document\n||all.example^$all']);
-  const q = function (url, type) { return e.match({ url: url, host: new URL(url).hostname, type: type, docHost: '' }); };
-  assert(q('https://malware.example/', 'main_frame'));
-  assert(q('https://sub.malware.example/x', 'main_frame'));
-  assert(q('http://1.2.3.4/payload.exe', 'main_frame'));
-  assert(!q('http://1.2.3.4/other', 'main_frame'));
-  assert(q('https://phish.example/login', 'main_frame'));
-  assert(q('https://all.example/', 'main_frame'));
-  assert(q('https://malware.example/a.js', 'script'));
-  assert(!q('https://good.example/', 'main_frame'));
-  // обычный блокировщик рекламы страницы не трогает
-  const ad = new F.Engine();
-  ad.addLists(['||malware.example^']);
-  assert(!ad.match({ url: 'https://malware.example/', host: 'malware.example', type: 'main_frame', docHost: '' }));
+  assert.strictEqual(e.genericStylesheet({}).indexOf('scriptlet'), -1);
+  assert.strictEqual(e.cosmeticFor('example.com').indexOf('scriptlet'), -1);
 });
 
 // ───────── общая таблица стилей ─────────
@@ -196,25 +176,27 @@ function hiddenOn(css, url, sel) {
     return b.body.split('\n').indexOf(sel + '{display:none!important}') >= 0 && condMatches(b.cond, url);
   });
 }
-test('таблица стилей: общие и частные правила', function () {
-  const css = eng.userStylesheet({ allowlist: ['mysite.org'] });
+test('общая таблица: исключения сайтов и список пользователя', function () {
+  const css = eng.genericStylesheet({ allowlist: ['mysite.org'] });
   assert(hiddenOn(css, 'https://plain.com/', '.ad-banner'));
+  assert(hiddenOn(css, 'https://plain.com:8080/x?y', '.ad-banner'));
   assert(!hiddenOn(css, 'https://www.nohide.com/x', '.ad-banner'), '~nohide.com');
   assert(!hiddenOn(css, 'https://example.org/', '.ad-banner'), 'example.org#@#');
-  assert(hiddenOn(css, 'https://example.org/', 'div[id^="google_ads"]'));
-  assert(!hiddenOn(css, 'https://nogeneric.org/', 'div[id^="google_ads"]'), '$generichide');
-  assert(!hiddenOn(css, 'https://a.mysite.org/', 'div[id^="google_ads"]'), 'список пользователя');
-  assert(hiddenOn(css, 'https://example.org/p', '.sponsored'));
-  assert(hiddenOn(css, 'https://www.example.org/p', '.promo'));
-  assert(!hiddenOn(css, 'https://sub.example.org/p', '.promo'), '~sub.example.org');
-  assert(!hiddenOn(css, 'https://other.org/p', '.sponsored'));
-  assert(!hiddenOn(css, 'https://notexample.org/', '.sponsored'));
-  assert(css.indexOf('has-text') < 0);
+  assert(!hiddenOn(css, 'https://nogeneric.org/', '.ad-banner'), '$generichide');
+  assert(!hiddenOn(css, 'https://a.mysite.org/', '.ad-banner'), 'список пользователя');
+  assert(hiddenOn(css, 'https://notmysite.org/', '.ad-banner'));
 });
-test('таблица стилей: свой сайт выключает и частные правила', function () {
-  const css = eng.userStylesheet({ allowlist: ['www.example.org'] });
-  assert(hiddenOn(css, 'https://example.org/', '.sponsored'));
-  assert(!hiddenOn(css, 'https://www.example.org/', '.sponsored'));
+
+test('опасные сайты: список адресов', function () {
+  const l = new F.HostList();
+  l.add('! malware-filter\n0.0.0.0 bad.example\nevil.test\n||phish.example^$all\n1.2.3.4/payload.exe\nhost.test/path/x^\n');
+  assert(l.match('https://bad.example/', 'bad.example'));
+  assert(l.match('https://sub.evil.test/a', 'sub.evil.test'));
+  assert(l.match('https://phish.example/login', 'phish.example'));
+  assert(l.match('http://1.2.3.4/payload.exe', '1.2.3.4'));
+  assert(!l.match('http://1.2.3.4/other', '1.2.3.4'));
+  assert(l.match('https://host.test/path/x', 'host.test'));
+  assert(!l.match('https://good.example/', 'good.example'));
 });
 
 // ───────── ссылки ─────────

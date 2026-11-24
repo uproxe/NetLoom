@@ -1,0 +1,173 @@
+name: Проверка
+
+# Проверяет каждое изменение: тесты, снимки интерфейса на компьютере и на Android,
+# замер скорости (процессор и память) на одних и тех же сайтах.
+# Ничего не выпускает — результаты лежат в ветке preview.
+
+on:
+  workflow_dispatch:
+    inputs:
+      compare:
+        description: "Сравнить скорость с версией (коммит или тег, например v1.0.0)"
+        required: false
+        default: ""
+  push:
+    branches: [main]
+    paths:
+      - "ui/**"
+      - "android/**"
+      - "tools/**"
+      - "tests/**"
+      - ".github/workflows/checks.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: checks
+  cancel-in-progress: true
+
+env:
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  tests:
+    name: Тесты
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Тесты логики
+        run: node tests/test.js
+      - name: Синтаксис скриптов
+        run: |
+          for f in $(git ls-files '*.js' '*.mjs'); do node --check "$f" || exit 1; done
+          for f in $(git ls-files '*.sh'); do bash -n "$f" || exit 1; done
+          echo "без ошибок"
+
+  desktop:
+    name: Компьютер — снимки и скорость
+    needs: tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Пакеты
+        run: |
+          sudo apt-get -o Acquire::Retries=3 update
+          sudo apt-get -o Acquire::Retries=3 install -y xvfb xdotool imagemagick fonts-noto-core fonts-noto-color-emoji
+      - name: Движок NetLoom для Linux
+        run: |
+          for e in $(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[] | select(.tag_name | startswith("engine-")) | .tag_name' | sort -V -r); do
+            if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$e" --jq '.assets[].name' | grep -Eq -e '-linux64\.tar\.'; then TAG="$e"; break; fi
+          done
+          echo "Движок: $TAG"
+          gh release download "$TAG" --pattern '*-linux64.tar.*' --dir engine-dl
+          mkdir engine && tar -xf engine-dl/netloom-engine-*-linux64.tar.* -C engine
+      - name: Снимки интерфейса
+        run: |
+          cp -a engine/netloom app
+          bash tools/apply-ui.sh app
+          bash tools/ui-preview.sh app out/desktop
+      - name: Скорость
+        env:
+          COMPARE: ${{ inputs.compare }}
+        run: |
+          VARIANTS=("движок-без-NetLoom=-" "NetLoom=$PWD/ui")
+          if [ -n "$COMPARE" ]; then
+            mkdir -p "/tmp/ui-$COMPARE" && git archive "$COMPARE" ui | tar -x -C "/tmp/ui-$COMPARE"
+            VARIANTS+=("NetLoom-$COMPARE=/tmp/ui-$COMPARE/ui")
+          fi
+          bash tools/perf.sh engine/netloom out/perf "${VARIANTS[@]}"
+          rm -rf out/perf/app-* out/perf/profile-* out/perf/lists
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop
+          path: out
+          retention-days: 3
+
+  android:
+    name: Android — сборка и эмулятор
+    needs: tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Версии
+        id: v
+        run: bash tools/android-versions.sh | tee -a "$GITHUB_OUTPUT"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: ${{ steps.v.outputs.gradle }}
+      - name: Сборка для эмулятора (x86_64)
+        run: |
+          bash tools/android-build.sh x86_64 "${{ steps.v.outputs.gv }}" "${{ steps.v.outputs.agp }}" \
+            "${{ steps.v.outputs.sdk_major }}" "${{ steps.v.outputs.sdk_minor }}"
+      - name: Доступ к виртуализации
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Запуск на эмуляторе
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: bash tools/android-smoke.sh android/app/build/outputs/apk/release/app-release.apk out/android
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android
+          path: out
+          retention-days: 3
+
+  preview:
+    name: Результаты в ветку preview
+    needs: [tests, desktop, android]
+    if: always() && needs.tests.result == 'success'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: art
+      - name: Ветка preview
+        run: |
+          mkdir -p p/android p/desktop
+          cp art/desktop/desktop/*.png p/desktop/ 2>/dev/null || true
+          cp art/android/android/*.png p/android/ 2>/dev/null || true
+          PERF="$(cat art/desktop/perf/perf.md 2>/dev/null || echo 'замер не выполнен')"
+          {
+            echo "# Проверка NetLoom"
+            echo
+            echo "Коммит ${GITHUB_SHA::7}, $(date -u '+%Y-%m-%d %H:%M') UTC."
+            echo
+            echo "## Скорость (8 сайтов, Linux, одинаковые условия)"
+            echo
+            echo "$PERF"
+            echo
+            echo "## Компьютер"
+            echo
+            for f in p/desktop/*.png; do [ -f "$f" ] && echo "![](desktop/$(basename "$f"))"; done
+            echo
+            echo "## Android"
+            echo
+            for f in p/android/*.png; do [ -f "$f" ] && echo "<img src=\"android/$(basename "$f")\" width=\"240\">"; done
+          } > p/README.md
+          cd p
+          git init -q
+          git checkout -q -b preview
+          git add -A
+          git -c user.name="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA" --jq .commit.author.name)" \
+              -c user.email="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA" --jq .commit.author.email)" \
+              commit -q -m "Проверка ${GITHUB_SHA::7}"
+          git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" preview

@@ -185,18 +185,35 @@
   function isEntity(d) { return d.indexOf('*') >= 0 || d.charAt(0) === '/'; }
 
   // ───────── Хранилище правил ─────────
+  // Значение в картах — одно правило или массив: большинство адресов встречается один раз,
+  // а лишний массив на каждое правило стоит памяти.
   function Store() {
-    this.hosts = new Map();   // host → [rule]
-    this.tokens = new Map();  // token → [rule]
+    this.hosts = new Map();   // host → rule | [rule]
+    this.tokens = new Map();  // token → rule | [rule]
     this.generic = [];        // правила без токена
     this.count = 0;
   }
   Store.prototype.add = function (key, rule, map) {
-    let list = map.get(key);
-    if (!list) { list = []; map.set(key, list); }
-    list.push(rule);
+    const cur = map.get(key);
+    if (cur === undefined) map.set(key, rule);
+    else if (Array.isArray(cur)) {
+      if (rule === ANY && cur.indexOf(ANY) >= 0) return;
+      cur.push(rule);
+    } else if (cur === ANY && rule === ANY) return;
+    else map.set(key, [cur, rule]);
     this.count++;
   };
+  function testEntry(v, ctx) {
+    if (!Array.isArray(v)) return v.test(ctx) ? v : null;
+    for (let i = 0; i < v.length; i++) if (v[i].test(ctx)) return v[i];
+    return null;
+  }
+
+  // хост или его родительский домен есть во множестве
+  function inSet(host, set) {
+    if (!set.size || !host) return false;
+    return forEachSuffix(host, function (h) { return set.has(h); });
+  }
 
   // Обязательный кусок текста из regex — быстрая проверка до запуска самого regex
   function regexLiteral(src) {
@@ -217,8 +234,7 @@
     return best.length >= 3 ? best : '';
   }
 
-  function Rule(text, src, mask, opts, isRegex) {
-    this.text = text;
+  function Rule(src, mask, opts, isRegex) {
     this.lit = isRegex ? regexLiteral(src) : '';
     this.src = src;          // исходник regex (компилируется лениво) или null
     this.re = null;
@@ -242,15 +258,15 @@
     }
     return this.re.test(ctx.url);
   };
+  // «||host^» без опций — самое частое правило: один общий объект на все
+  const ANY = new Rule(null, ALL_TYPES, { thirdParty: undefined, inc: null, exc: null, important: false, matchCase: false });
 
   // ───────── Движок ─────────
   function Engine(opts) {
     this.validateSelector = (opts && opts.validateSelector) || null;
-    // режим защиты от опасных сайтов: правила блокируют и сами страницы
-    this.security = !!(opts && opts.security);
     this.block = new Store();
     this.allow = new Store();
-    this.docAllow = [];                 // @@…$document — сайт полностью без блокировки
+    this.docAllow = new Set();          // @@…$document — сайт полностью без блокировки
     this.genericHideOff = new Set();    // @@…$generichide
     this.elemHideOff = new Set();       // @@…$elemhide
     this.genericSel = new Set();        // ##sel
@@ -259,13 +275,11 @@
     this.specific = new Map();          // domain → [{sel, exc}]
     this.specificExc = new Map();       // domain → Set(sel)
     this.skipped = 0;
-    this._genericCSS = null;
   }
 
   Engine.prototype.addList = function (text) {
     const lines = text.split(/\r?\n/);
     for (let i = 0; i < lines.length; i++) this.addLine(lines[i]);
-    this._genericCSS = null;
   };
 
   /**
@@ -293,7 +307,6 @@
         this.addLine(line);
       }
     }
-    this._genericCSS = null;
   };
 
   const COSMETIC_SEP = /^([^\s#]*?)(#@?[?$%]?#)(.+)$/;
@@ -326,10 +339,12 @@
         this.genericSel.add(sel);
         for (const ex of d.exc) addToSetMap(this.genericExc, ex, sel);
       } else {
+        // чаще всего исключений нет — храним просто строку
+        const item = d.exc.length ? { sel: sel, exc: d.exc } : sel;
         for (const dom of d.inc) {
           let list = this.specific.get(dom);
           if (!list) { list = []; this.specific.set(dom, list); }
-          list.push({ sel: sel, exc: d.exc.length ? d.exc : null });
+          list.push(item);
         }
       }
     } else {
@@ -355,17 +370,12 @@
     const opts = so[1] ? parseOptions(so[1]) : parseOptions('');
     if (opts.unsupported) { this.skipped++; return; }
 
-    // в режиме защиты «$document» у блокирующего правила значит «блокировать и страницу»
-    if (this.security && !exception && opts.special === 'document') {
-      opts.special = null;
-      opts.mask |= ALL_TYPES;
-    }
     // особые исключения уровня страницы
     if (opts.special) {
       if (!exception) { this.skipped++; return; } // блокировать документы целиком не умеем
       const host = pureHost(pattern);
       if (!host) { this.skipped++; return; }
-      if (opts.special === 'document') this.docAllow.push(host);
+      if (opts.special === 'document') this.docAllow.add(host);
       else if (opts.special === 'generichide') this.genericHideOff.add(host);
       else if (opts.special === 'elemhide') this.elemHideOff.add(host);
       return;
@@ -376,13 +386,12 @@
     if (!mask) { this.skipped++; return; }
 
     const store = exception ? this.allow : this.block;
-    const text = (exception ? '@@' : '') + line;
 
     // /regex/
     if (pattern.length > 2 && pattern.charAt(0) === '/' && pattern.charAt(pattern.length - 1) === '/') {
       const src = pattern.slice(1, -1);
       try { new RegExp(src); } catch (e) { this.skipped++; return; }
-      store.generic.push(new Rule(text, src, mask, opts, true)); store.count++;
+      store.generic.push(new Rule(src, mask, opts, true)); store.count++;
       return;
     }
 
@@ -402,8 +411,8 @@
       if (host && host.indexOf('.') > 0 && !host.endsWith('.') && !after.startsWith('*') &&
           (after === '' || /^[\^\/:?|]/.test(after))) {
         const pure = after === '' || after === '^' || after === '^|' || after === '|';
-        const src = pure ? null : patternToRegexSource(pattern);
-        store.add(host, new Rule(text, src, mask, opts), store.hosts);
+        const plain = pure && mask === ALL_TYPES && opts.thirdParty === undefined && !opts.inc && !opts.exc && !opts.important;
+        store.add(host, plain ? ANY : new Rule(pure ? null : patternToRegexSource(pattern), mask, opts), store.hosts);
         return;
       }
     }
@@ -414,7 +423,7 @@
     else if (body.startsWith('|')) { body = body.slice(1); anchoredStart = true; }
     if (body.endsWith('|')) { body = body.slice(0, -1); anchoredEnd = true; }
     const token = bestToken(body.toLowerCase(), anchoredStart, anchoredEnd);
-    const rule = new Rule(text, patternToRegexSource(pattern), mask, opts);
+    const rule = new Rule(patternToRegexSource(pattern), mask, opts);
     if (token) store.add(token, rule, store.tokens);
     else { store.generic.push(rule); store.count++; }
   };
@@ -427,18 +436,18 @@
   function findIn(store, ctx) {
     let found = null;
     forEachSuffix(ctx.host, function (h) {
-      const list = store.hosts.get(h);
-      if (!list) return false;
-      for (let i = 0; i < list.length; i++) if (list[i].test(ctx)) { found = list[i]; return true; }
-      return false;
+      const v = store.hosts.get(h);
+      if (v !== undefined) found = testEntry(v, ctx);
+      return found !== null;
     });
     if (found) return found;
     if (store.tokens.size) {
       const toks = ctx.tokens;
       for (let t = 0; t < toks.length; t++) {
-        const list = store.tokens.get(toks[t]);
-        if (!list) continue;
-        for (let i = 0; i < list.length; i++) if (list[i].test(ctx)) return list[i];
+        const v = store.tokens.get(toks[t]);
+        if (v === undefined) continue;
+        const r = testEntry(v, ctx);
+        if (r) return r;
       }
     }
     for (let i = 0; i < store.generic.length; i++) if (store.generic[i].test(ctx)) return store.generic[i];
@@ -453,53 +462,61 @@
   /**
    * Проверить запрос.
    * @param {object} q { url, host, type (webRequest type), docHost }
-   * @returns {null | {rule:string}}  null — пропустить, объект — заблокировать
+   * @returns {boolean} true — заблокировать
    */
   Engine.prototype.match = function (q) {
-    const bit = this.security && q.type === 'main_frame' ? T.subdocument : WR_TYPES[q.type];
-    if (!bit) return null; // основной документ не блокируем
+    const bit = WR_TYPES[q.type];
+    if (!bit) return false; // основной документ не блокируем
     const host = (q.host || '').toLowerCase();
     const docHost = (q.docHost || '').toLowerCase();
-    if (docHost && domainInList(docHost, this.docAllow)) return null;
+    if (docHost && inSet(docHost, this.docAllow)) return false;
     const ctx = {
       url: q.url, urlLower: q.url.toLowerCase(), host: host, docHost: docHost, bit: bit,
       thirdParty: isThirdParty(host, docHost), tokens: null
     };
     ctx.tokens = urlTokens(ctx.urlLower);
     const b = findIn(this.block, ctx);
-    if (!b) return null;
-    if (!b.important && findIn(this.allow, ctx)) return null;
-    return { rule: b.text };
+    if (!b) return false;
+    return b.important || !findIn(this.allow, ctx);
   };
 
   Engine.prototype.isDocAllowed = function (host) {
-    return !!host && domainInList(host.toLowerCase(), this.docAllow);
+    return inSet((host || '').toLowerCase(), this.docAllow);
   };
 
   // ───────── Косметика ─────────
-  function cssFromSelectors(sels) {
-    const out = [];
-    for (let i = 0; i < sels.length; i += 100) {
-      out.push(sels.slice(i, i + 100).join(',\n') + '{display:none!important}');
-    }
-    return out.join('\n');
+  // Скрытие рекламы делится на две части:
+  //  • общие правила (##.banner для всех сайтов) — одна небольшая таблица стилей на весь браузер;
+  //    берём только «дешёвые» селекторы — с #id или .class в конце: движок стилей находит их по
+  //    индексу, а селекторы по атрибутам проверялись бы на каждом элементе каждой страницы;
+  //  • правила конкретных сайтов — только для открытой страницы (cosmeticFor), а не все сразу.
+  // в селекторе не должно быть того, что закрывает правило или начинает новое
+  const SAFE_SELECTOR = /^(?!.*\/\*)[^{};@]+$/;
+  function escRe(s) { return s.replace(/[.*+?^${}()|[\]\\\/]/g, '\\$&'); }
+  function cssString(s) { return '"' + s.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"'; }
+  function hideRule(sel) { return sel + '{display:none!important}'; }
+
+  /** Последняя часть селектора ищется по id или классу? */
+  function cheapSelector(sel) {
+    // содержимое [атрибутов] и (скобок) не учитываем: там бывают точки и пробелы
+    const plain = sel.replace(/\[[^\]]*\]/g, '[]').replace(/\([^()]*\)/g, '()');
+    const parts = plain.split(/\s*[>+~ ]\s*/);
+    return /[#.][A-Za-z_\\-]/.test(parts[parts.length - 1]);
   }
 
+  Engine.prototype.ok = function (sel) {
+    return !this.globalUnhide.has(sel) && SAFE_SELECTOR.test(sel) && (!this.validateSelector || this.validateSelector(sel));
+  };
+
+  /** Общие селекторы для таблицы на весь браузер */
   Engine.prototype.genericSelectors = function () {
+    const out = [];
     const self = this;
-    return Array.from(this.genericSel).filter(function (s) {
-      if (self.globalUnhide.has(s)) return false;
-      return !self.validateSelector || self.validateSelector(s);
-    });
+    this.genericSel.forEach(function (sel) { if (cheapSelector(sel) && self.ok(sel)) out.push(sel); });
+    return out;
   };
 
-  /** CSS общих селекторов — регистрируется один раз для всех сайтов */
-  Engine.prototype.genericCSS = function () {
-    if (this._genericCSS === null) this._genericCSS = cssFromSelectors(this.genericSelectors());
-    return this._genericCSS;
-  };
-
-  /** Домены, где общий CSS нельзя применять целиком */
+  /** Сайты, где общие правила не применяются (у них есть исключения в списках) */
   Engine.prototype.genericExcludedDomains = function () {
     const s = new Set();
     this.genericExc.forEach(function (_, d) { s.add(d); });
@@ -509,120 +526,46 @@
     return Array.from(s);
   };
 
+  /** CSS общих правил одним блоком: все сайты, кроме исключённых и выбранных пользователем */
+  Engine.prototype.genericStylesheet = function (opts) {
+    const sels = this.genericSelectors();
+    if (!sels.length) return '';
+    const off = this.genericExcludedDomains().concat((opts && opts.allowlist) || [])
+      .map(function (d) { return d.toLowerCase(); })
+      .filter(function (d) { return /^[a-z0-9.-]+$/.test(d); });
+    const cond = off.length
+      ? 'regexp(' + cssString('https?:\\/\\/(?!(?:[^\\/?#]*\\.)?(?:' + Array.from(new Set(off)).map(escRe).join('|') + ')(?::\\d+)?[\\/?#]).*') + ')'
+      : 'url-prefix("http://"), url-prefix("https://")';
+    return '/* NetLoom: скрытие рекламы */\n@-moz-document ' + cond + ' {\n' + sels.map(hideRule).join('\n') + '\n}\n';
+  };
+
   /**
-   * CSS для конкретного сайта.
-   * @param {string} host
-   * @param {boolean} genericExcluded — сайт в списке исключений общего CSS (тогда общий CSS добавляется сюда, отфильтрованным)
+   * CSS для одного сайта: его собственные правила. По правилу на селектор —
+   * ошибка в одном не отключает остальные.
    */
-  Engine.prototype.cosmeticFor = function (host, genericExcluded) {
+  Engine.prototype.cosmeticFor = function (host) {
     host = (host || '').toLowerCase();
-    if (!host) return '';
-    if (domainInList(host, Array.from(this.elemHideOff)) || this.isDocAllowed(host)) return '';
+    if (!host || inSet(host, this.elemHideOff) || inSet(host, this.docAllow)) return '';
     const self = this;
-    const unhideSpecific = new Set();
-    const unhideGeneric = new Set();
+    const unhide = new Set();
     forEachSuffix(host, function (h) {
-      const a = self.specificExc.get(h); if (a) a.forEach(function (x) { unhideSpecific.add(x); });
-      const b = self.genericExc.get(h); if (b) b.forEach(function (x) { unhideGeneric.add(x); });
+      const a = self.specificExc.get(h); if (a) a.forEach(function (x) { unhide.add(x); });
       return false;
     });
-    const sels = [];
+    const sels = new Set();
     forEachSuffix(host, function (h) {
       const list = self.specific.get(h);
       if (!list) return false;
       for (const it of list) {
-        if (unhideSpecific.has(it.sel) || self.globalUnhide.has(it.sel)) continue;
-        if (it.exc && domainInList(host, it.exc)) continue;
-        if (self.validateSelector && !self.validateSelector(it.sel)) continue;
-        sels.push(it.sel);
+        const sel = typeof it === 'string' ? it : it.sel;
+        if (typeof it !== 'string' && domainInList(host, it.exc)) continue;
+        if (!unhide.has(sel) && self.ok(sel)) sels.add(sel);
       }
       return false;
     });
-    if (genericExcluded && !domainInList(host, Array.from(this.genericHideOff))) {
-      for (const s of this.genericSelectors()) if (!unhideGeneric.has(s)) sels.push(s);
-    }
-    return sels.length ? cssFromSelectors(Array.from(new Set(sels))) : '';
-  };
-
-  // ───────── Пользовательская таблица стилей для всего браузера ─────────
-  function escRe(s) { return s.replace(/[.*+?^${}()|[\]\\\/]/g, '\\$&'); }
-  function cssString(s) { return '"' + s.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"'; }
-  const HOST_PREFIX = '(?:[^\\/?#]*\\.)?';
-  const HOST_END = '(?::\\d+)?[\\/?#]';
-  function notHosts(domains) {
-    return domains.length ? '(?!' + HOST_PREFIX + '(?:' + domains.map(escRe).join('|') + ')' + HOST_END + ')' : '';
-  }
-  /** @-moz-document: все http(s)-страницы, кроме доменов (и их поддоменов) */
-  function condExcept(domains) {
-    if (!domains.length) return 'url-prefix("http://"), url-prefix("https://")';
-    return 'regexp(' + cssString('https?:\\/\\/' + notHosts(domains) + '.*') + ')';
-  }
-  /** @-moz-document: домен и поддомены, кроме исключённых */
-  function condDomain(domain, except) {
-    if (!except.length) return 'domain(' + cssString(domain) + ')';
-    return 'regexp(' + cssString('https?:\\/\\/' + notHosts(except) + HOST_PREFIX + escRe(domain) + HOST_END + '.*') + ')';
-  }
-  function uniq(a) { return Array.from(new Set(a)); }
-  const SAFE_SELECTOR = /^[^{}<>;@]+$/;
-  function hideRule(sel) { return sel + '{display:none!important}'; }
-
-  /**
-   * Вся косметика одной таблицей стилей (USER_SHEET).
-   * @param {{allowlist?: string[]}} opts allowlist — сайты, где пользователь выключил блокировку
-   */
-  Engine.prototype.userStylesheet = function (opts) {
-    const self = this;
-    const allow = ((opts && opts.allowlist) || []).map(function (d) { return d.toLowerCase(); });
-    const offAll = uniq(Array.from(this.elemHideOff).concat(this.docAllow, allow));
-    const offGeneric = uniq(offAll.concat(Array.from(this.genericHideOff)));
-    const ok = function (sel) {
-      return SAFE_SELECTOR.test(sel) && (!self.validateSelector || self.validateSelector(sel));
-    };
-    const out = ['/* NetLoom: скрытие рекламы */'];
-
-    // общие селекторы; те, у которых есть исключения на отдельных сайтах, — отдельными блоками
-    const excBySel = new Map();
-    this.genericExc.forEach(function (sels, dom) {
-      sels.forEach(function (sel) {
-        let l = excBySel.get(sel);
-        if (!l) { l = []; excBySel.set(sel, l); }
-        l.push(dom);
-      });
-    });
-    const plain = [];
-    Array.from(this.genericSel).forEach(function (sel) {
-      if (self.globalUnhide.has(sel) || !ok(sel)) return;
-      if (excBySel.has(sel)) {
-        out.push('@-moz-document ' + condExcept(uniq(offGeneric.concat(excBySel.get(sel)))) + ' {\n' + hideRule(sel) + '\n}');
-      } else {
-        plain.push(hideRule(sel));
-      }
-    });
-    if (plain.length) out.push('@-moz-document ' + condExcept(offGeneric) + ' {\n' + plain.join('\n') + '\n}');
-
-    // правила для конкретных сайтов
-    this.specific.forEach(function (list, dom) {
-      if (domainInList(dom, offAll)) return;
-      const unhide = new Set();
-      forEachSuffix(dom, function (h) {
-        const x = self.specificExc.get(h);
-        if (x) x.forEach(function (s) { unhide.add(s); });
-        return false;
-      });
-      const subOff = offAll.filter(function (d) { return d !== dom && hostMatches(d, dom); });
-      const groups = new Map();
-      for (const it of list) {
-        if (unhide.has(it.sel) || self.globalUnhide.has(it.sel) || !ok(it.sel)) continue;
-        const key = it.exc ? it.exc.slice().sort().join(',') : '';
-        let g = groups.get(key);
-        if (!g) { g = { exc: it.exc || [], rules: [] }; groups.set(key, g); }
-        g.rules.push(hideRule(it.sel));
-      }
-      groups.forEach(function (g) {
-        out.push('@-moz-document ' + condDomain(dom, uniq(g.exc.concat(subOff))) + ' {\n' + uniq(g.rules).join('\n') + '\n}');
-      });
-    });
-    return out.join('\n');
+    let css = '';
+    sels.forEach(function (sel) { css += hideRule(sel) + '\n'; });
+    return css;
   };
 
   Engine.prototype.stats = function () {
@@ -634,8 +577,51 @@
     };
   };
 
+  // ───────── Опасные сайты: список адресов ─────────
+  // Списки malware-filter: строки «host», «||host^$all» и «||host/путь^$all».
+  // Хранятся множеством строк — это в разы легче, чем правила общего движка.
+  function HostList() {
+    this.hosts = new Set();
+    this.paths = new Map();   // host → [путь]
+    this.count = 0;
+  }
+  HostList.prototype.add = function (text) {
+    const lines = text.split(/\r?\n/);
+    for (let i = 0; i < lines.length; i++) {
+      let l = lines[i].trim();
+      const c = l.charAt(0);
+      if (!l || c === '!' || c === '#' || c === '[') continue;
+      l = l.replace(/^(0\.0\.0\.0|127\.0\.0\.1)\s+/, '');
+      if (l.startsWith('@@')) continue;
+      if (l.startsWith('||')) l = l.slice(2);
+      const opt = l.indexOf('$');
+      if (opt >= 0) l = l.slice(0, opt);
+      l = l.replace(/\^\|?$/, '').toLowerCase();
+      if (!l || l.indexOf('*') >= 0) continue;
+      const slash = l.indexOf('/');
+      if (slash < 0) { this.hosts.add(l); this.count++; continue; }
+      const host = l.slice(0, slash);
+      if (!host) continue;
+      let list = this.paths.get(host);
+      if (!list) { list = []; this.paths.set(host, list); }
+      list.push(l.slice(slash));
+      this.count++;
+    }
+  };
+  HostList.prototype.match = function (url, host) {
+    host = (host || '').toLowerCase();
+    if (!host) return false;
+    if (inSet(host, this.hosts)) return true;
+    const list = this.paths.get(host);
+    if (!list) return false;
+    const m = /^[a-z][a-z0-9+.-]*:\/\/[^\/?#]*(.*)$/i.exec(url);
+    const path = m ? m[1].toLowerCase() : '';
+    for (let i = 0; i < list.length; i++) if (path.startsWith(list[i])) return true;
+    return false;
+  };
+
   const api = {
-    Engine: Engine, baseDomain: baseDomain, isThirdParty: isThirdParty,
+    Engine: Engine, HostList: HostList, baseDomain: baseDomain, isThirdParty: isThirdParty,
     hostMatches: hostMatches, domainInList: domainInList, patternToRegexSource: patternToRegexSource
   };
   root.NCFilters = api;

@@ -42,14 +42,15 @@ def save_ico(rel: str, sizes, private: bool = False):
     imgs[-1].save(p, format="ICO", sizes=[(s, s) for s in sizes], append_images=imgs[:-1], bitmap_format="bmp")
 
 
-def save_icns(rel: str, private: bool = False):
-    """Значок macOS (.icns) из PNG-частей — формат, который понимает macOS 10.7+."""
+def save_icns(rel: str):
+    """Значок macOS (.icns) из PNG-частей — формат, который понимает macOS 10.7+.
+    Рисуется с полями по сетке Apple (branding/icon-mac.svg), как у остальных программ Mac."""
     parts = [(b"icp4", 16), (b"icp5", 32), (b"ic07", 128), (b"ic08", 256), (b"ic09", 512),
              (b"ic10", 1024), (b"ic11", 32), (b"ic12", 64), (b"ic13", 256), (b"ic14", 512)]
     body = b""
     for kind, size in parts:
         buf = io.BytesIO()
-        icon(size, private).save(buf, format="PNG")
+        render(SRC / "icon-mac.svg", size).save(buf, format="PNG")
         data = buf.getvalue()
         body += kind + (len(data) + 8).to_bytes(4, "big") + data
     p = OUT / rel

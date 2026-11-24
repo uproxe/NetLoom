@@ -1,0 +1,257 @@
+name: Выпуск
+
+# Собирает NetLoom для людей и выкладывает в Releases:
+#   Windows — установщик и архив, Linux — .deb, macOS — .dmg (Apple Silicon и Intel), Android — .apk.
+# Когда запускается:
+#   • изменилась версия (файл VERSION) или запуск вручную — собирается всё;
+#   • собран новый движок (исправления безопасности) — пересобираются Windows, Linux и macOS;
+#   • раз в неделю — Android, если вышла новая версия его движка GeckoView.
+# Обычные правки кода релизы не трогают — их проверяет workflow «Проверка».
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["VERSION"]
+  workflow_run:
+    workflows: ["Движок"]
+    types: [completed]
+  schedule:
+    - cron: "41 3 * * 1"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  prepare:
+    name: Что собирать
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.p.outputs.tag }}
+      win64: ${{ steps.p.outputs.win64 }}
+      linux64: ${{ steps.p.outputs.linux64 }}
+      mac: ${{ steps.p.outputs.mac }}
+      android: ${{ steps.p.outputs.android }}
+      gv: ${{ steps.v.outputs.gv }}
+      agp: ${{ steps.v.outputs.agp }}
+      gradle: ${{ steps.v.outputs.gradle }}
+      sdk_major: ${{ steps.v.outputs.sdk_major }}
+      sdk_minor: ${{ steps.v.outputs.sdk_minor }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Версии для Android
+        id: v
+        run: bash tools/android-versions.sh | tee -a "$GITHUB_OUTPUT"
+      - id: p
+        env:
+          EVENT: ${{ github.event_name }}
+          GV: ${{ steps.v.outputs.gv }}
+        run: |
+          VER="$(cat VERSION)"; TAG="v$VER"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          ENGINES="$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --paginate \
+            --jq '.[] | select(.tag_name | startswith("engine-")) | .tag_name' | sort -V -r)"
+          # черновики не видны по адресу …/releases/tags/<тег> — ищем в общем списке
+          PACKED="$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq ".[] | select(.tag_name == \"$TAG\") | .assets[] | \"\\(.name)\\t\\(.label)\\t\\(.updated_at)\"")"
+          for p in win64 linux64 mac; do
+            case $p in
+              win64)   want='-win64\.zip';               main="NetLoom-$VER-windows-x64-setup.exe" ;;
+              linux64) want='-linux64\.tar\.[a-z0-9]+';  main="netloom_${VER}_amd64.deb" ;;
+              mac)     want='-mac-universal\.dmg';       main="NetLoom-$VER-macos-universal.dmg" ;;
+            esac
+            found=""; engine_time=""
+            for e in $ENGINES; do
+              engine_time="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$e" --jq '.assets[] | "\(.name)\t\(.updated_at)"' | grep -E -e "$want"$'\t' | cut -f2 | head -1)"
+              if [ -n "$engine_time" ]; then found="$e"; break; fi
+            done
+            build=false
+            if [ -z "$found" ]; then
+              echo "$p: движок ещё не собран"
+            elif [ "$EVENT" = "workflow_dispatch" ] || [ "$EVENT" = "push" ]; then
+              build=true
+            elif [ "$EVENT" = "workflow_run" ]; then
+              packed_time="$(awk -F'\t' -v n="$main" '$1 == n { print $3 }' <<<"$PACKED")"
+              # движок новее готового пакета (новая версия или пересборка) — собираем заново
+              [[ "$engine_time" < "$packed_time" ]] || build=true
+            fi
+            if [ "$build" = true ]; then echo "$p: собираю на ${found}"; echo "$p=$found" >> "$GITHUB_OUTPUT"
+            else echo "$p=" >> "$GITHUB_OUTPUT"; fi
+          done
+          ANDROID=false
+          case "$EVENT" in
+            workflow_dispatch|push) ANDROID=true ;;
+            schedule)
+              LABEL="$(awk -F'\t' -v n="NetLoom-$VER-android-arm64.apk" '$1 == n { print $2 }' <<<"$PACKED")"
+              grep -q "движок $GV)" <<<"$LABEL" || ANDROID=true ;;
+          esac
+          echo "android: $ANDROID"; echo "android=$ANDROID" >> "$GITHUB_OUTPUT"
+          # черновик: люди увидят релиз, когда в нём будут Windows, Linux и macOS
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --draft --title "NetLoom $VER" --notes "Сборка идёт — файлы появятся здесь."
+          fi
+
+  windows:
+    name: Windows
+    needs: prepare
+    if: needs.prepare.outputs.win64 != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: NSIS
+        run: sudo apt-get -o Acquire::Retries=3 update && sudo apt-get install -y nsis zip unzip
+      - name: Сборка
+        run: |
+          gh release download "${{ needs.prepare.outputs.win64 }}" --dir engine-dl --pattern '*-win64.zip'
+          bash tools/package.sh win64 "$(ls engine-dl/netloom-engine-*-win64.zip | head -1)" dist
+      - name: Публикация
+        run: |
+          VER="$(cat VERSION)"; EV="$(cat dist/ENGINE_VERSION)"
+          gh release upload "${{ needs.prepare.outputs.tag }}" --clobber \
+            "dist/NetLoom-$VER-windows-x64-setup.exe#Windows — установщик (движок $EV)" \
+            "dist/NetLoom-$VER-windows-x64.zip#Windows — без установки, архив (движок $EV)"
+
+  windows-check:
+    name: Windows — проверка установщика
+    needs: [prepare, windows]
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Установщик
+        shell: bash
+        run: |
+          TAG="${{ needs.prepare.outputs.tag }}"
+          ID="$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq ".[] | select(.tag_name == \"$TAG\") | .assets[] | select(.name | endswith(\"-windows-x64-setup.exe\")) | .id" | head -1)"
+          mkdir -p dl && gh api -H "Accept: application/octet-stream" "repos/$GITHUB_REPOSITORY/releases/assets/$ID" > dl/NetLoom-setup.exe
+      - name: Установка, запуск, удаление
+        shell: pwsh
+        run: |
+          Start-Process (Resolve-Path dl\NetLoom-setup.exe) -ArgumentList "/S" -Wait
+          $dir = "$env:LOCALAPPDATA\Programs\NetLoom"
+          foreach ($f in "netloom.exe", "cores\xray\xray.exe", "cores\sing-box\sing-box.exe") {
+            if (-not (Test-Path "$dir\$f")) { throw "не установлен $f" }
+          }
+          if (-not (Test-Path "HKCU:\Software\Clients\StartMenuInternet\NetLoom\Capabilities")) { throw "браузер не зарегистрирован" }
+          if (-not (Test-Path "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\NetLoom.lnk")) { throw "нет ярлыка в меню Пуск" }
+          $bad = Get-ChildItem $dir -Recurse -Include *.exe, *.dll | Where-Object {
+            $v = $_.VersionInfo; "$($v.CompanyName) $($v.ProductName) $($v.FileDescription) $($v.LegalCopyright) $($v.LegalTrademarks)" -match "Firefox|Mozilla"
+          } | Where-Object { $_.FullName -notmatch "\\cores\\" -and $_.Name -notmatch "^(msvcp|vcruntime|ucrtbase|api-ms)" }
+          if ($bad) { $bad | ForEach-Object { $_.Name }; throw "в свойствах файлов есть Firefox или Mozilla" }
+          $p = Start-Process "$dir\netloom.exe" -ArgumentList "--headless","--screenshot","$env:RUNNER_TEMP\shot.png","about:blank" -PassThru
+          if (-not $p.WaitForExit(120000)) { $p.Kill(); throw "браузер не завершился" }
+          if (-not (Test-Path "$env:RUNNER_TEMP\shot.png")) { throw "браузер не запустился" }
+          Start-Process "$dir\uninstall.exe" -ArgumentList "/S" -Wait
+          Start-Sleep -Seconds 5
+          if (Test-Path "$dir\netloom.exe") { throw "не удалился" }
+          "установка, запуск и удаление — в порядке"
+
+  linux:
+    name: Linux
+    needs: prepare
+    if: needs.prepare.outputs.linux64 != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Сборка
+        run: |
+          gh release download "${{ needs.prepare.outputs.linux64 }}" --dir engine-dl --pattern '*-linux64.tar.*'
+          bash tools/package.sh linux64 "$(ls engine-dl/netloom-engine-*-linux64.tar.* | head -1)" dist
+      - name: Проверка пакета
+        run: |
+          VER="$(cat VERSION)"
+          sudo apt-get -o Acquire::Retries=3 update
+          sudo apt-get install -y "./dist/netloom_${VER}_amd64.deb"
+          timeout 120 netloom --headless --screenshot /tmp/shot.png about:blank && test -s /tmp/shot.png
+          sudo apt-get remove -y netloom
+      - name: Публикация
+        run: |
+          VER="$(cat VERSION)"; EV="$(cat dist/ENGINE_VERSION)"
+          gh release upload "${{ needs.prepare.outputs.tag }}" --clobber \
+            "dist/netloom_${VER}_amd64.deb#Linux — пакет .deb для Ubuntu, Debian, Mint, elementary OS (движок $EV)"
+
+  mac:
+    name: macOS
+    needs: prepare
+    if: needs.prepare.outputs.mac != ''
+    # образ для macOS собирается на Linux инструментами Mozilla (как у неё самой)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Сборка
+        run: |
+          gh release download "${{ needs.prepare.outputs.mac }}" --dir engine-dl --pattern '*-mac-universal.dmg'
+          bash tools/package.sh mac "$(ls engine-dl/netloom-engine-*-mac-universal.dmg | head -1)" dist
+      - name: Проверка образа
+        run: |
+          VER="$(cat VERSION)"; MT="$HOME/mac-tools"
+          "$MT/dmg/dmg" extract "dist/NetLoom-$VER-macos-universal.dmg" check.hfs >/dev/null
+          mkdir check && "$MT/dmg/hfsplus" check.hfs extractall / check >/dev/null
+          "$MT/cctools/bin/x86_64-apple-darwin-lipo" -info check/NetLoom.app/Contents/MacOS/netloom
+          test -d check/NetLoom.app/Contents/_CodeSignature
+      - name: Публикация
+        run: |
+          VER="$(cat VERSION)"; EV="$(cat dist/ENGINE_VERSION)"
+          gh release upload "${{ needs.prepare.outputs.tag }}" --clobber \
+            "dist/NetLoom-$VER-macos-universal.dmg#macOS — Apple Silicon и Intel (движок $EV)"
+
+  android:
+    name: Android
+    needs: prepare
+    if: needs.prepare.outputs.android == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: ${{ needs.prepare.outputs.gradle }}
+      - name: Ключ подписи
+        env:
+          KS: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          if [ -n "$KS" ]; then
+            echo "$KS" | base64 -d > "$RUNNER_TEMP/netloom.jks"
+            echo "NETLOOM_KEYSTORE=$RUNNER_TEMP/netloom.jks" >> "$GITHUB_ENV"
+            echo "NETLOOM_KEYSTORE_PASSWORD=$KS_PASS" >> "$GITHUB_ENV"
+            echo "NETLOOM_KEY_ALIAS=${KS_ALIAS:-netloom}" >> "$GITHUB_ENV"
+            echo "Подпись: секретный ключ репозитория"
+          else
+            echo "Подпись: открытый ключ из android/signing"
+          fi
+      - name: Сборка
+        run: |
+          bash tools/android-build.sh arm64-v8a "${{ needs.prepare.outputs.gv }}" "${{ needs.prepare.outputs.agp }}" \
+            "${{ needs.prepare.outputs.sdk_major }}" "${{ needs.prepare.outputs.sdk_minor }}"
+          BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          "$BT/apksigner" verify android/app/build/outputs/apk/release/app-release.apk
+      - name: Публикация
+        run: |
+          VER="$(cat VERSION)"
+          cp android/app/build/outputs/apk/release/app-release.apk "NetLoom-$VER-android-arm64.apk"
+          gh release upload "${{ needs.prepare.outputs.tag }}" --clobber \
+            "NetLoom-$VER-android-arm64.apk#Android — телефоны с 64-битным процессором (движок ${{ needs.prepare.outputs.gv }})"
+
+  publish:
+    name: Описание и публикация
+    needs: [prepare, windows, windows-check, linux, mac, android]
+    if: always() && needs.prepare.result == 'success' && !contains(needs.*.result, 'failure')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash tools/release-finish.sh "${{ needs.prepare.outputs.tag }}"

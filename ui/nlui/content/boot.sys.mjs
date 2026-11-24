@@ -63,6 +63,20 @@ function registerAboutPages() {
   }
 }
 
+/** Скрытие рекламы: каждая страница получает только правила своего сайта */
+function registerCosmeticActor() {
+  ChromeUtils.registerWindowActor("NetLoomCosmetic", {
+    parent: { esModuleURI: "chrome://netloom/content/CosmeticParent.sys.mjs" },
+    child: {
+      esModuleURI: "chrome://netloom/content/CosmeticChild.sys.mjs",
+      events: { DOMDocElementInserted: { capture: true } },
+    },
+    matches: ["http://*/*", "https://*/*"],
+    allFrames: true,
+    messageManagerGroups: ["browsers"],
+  });
+}
+
 function report(where, e) {
   Services.console.logStringMessage("NetLoom [" + where + "]: " + e + (e?.stack ? "\n" + e.stack : ""));
 }
@@ -74,6 +88,7 @@ const Boot = {
     if (this.started) return;
     this.started = true;
     registerAboutPages();
+    try { registerCosmeticActor(); } catch (e) { report("cosmetic", e); }
     Services.obs.addObserver(this, "final-ui-startup");
     Services.obs.addObserver(this, "chrome-document-global-created");
     Services.obs.addObserver(this, "browser-delayed-startup-finished");

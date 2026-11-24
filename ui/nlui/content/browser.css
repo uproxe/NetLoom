@@ -90,7 +90,6 @@
 .searchmode-switcher,
 #personal-toolbar-empty-description,
 #reset-pbm-toolbar-button,
-#picture-in-picture-button,
 #pageActionButton,
 #reader-mode-button,
 #tabs-newtab-button ~ toolbarbutton,
@@ -151,8 +150,9 @@
   outline: none !important;
   box-shadow: none !important;
 }
+/* подсказок нет — выпадающий список не показываем вовсе */
 #urlbar .urlbarView {
-  background-color: var(--nl-surface) !important;
+  display: none !important;
 }
 #urlbar-input::placeholder {
   color: var(--nl-muted) !important;

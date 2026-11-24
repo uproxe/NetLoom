@@ -28,7 +28,6 @@ fetch_list ruadlist https://easylist-downloads.adblockplus.org/advblock.txt
 fetch_list rucounters https://easylist-downloads.adblockplus.org/cntblock.txt
 fetch_list adguard-base https://filters.adtidy.org/extension/ublock/filters/2_without_easylist.txt
 fetch_list adguard-russian https://filters.adtidy.org/extension/ublock/filters/1.txt
-fetch_list adguard-tracking https://filters.adtidy.org/extension/ublock/filters/3.txt
 fetch_list urlhaus https://malware-filter.gitlab.io/malware-filter/urlhaus-filter-online.txt https://curbengh.github.io/malware-filter/urlhaus-filter-online.txt
 fetch_list phishing https://malware-filter.gitlab.io/malware-filter/phishing-filter.txt https://curbengh.github.io/malware-filter/phishing-filter.txt
 

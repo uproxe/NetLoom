@@ -176,7 +176,6 @@ fetch_list ruadlist https://easylist-downloads.adblockplus.org/advblock.txt
 fetch_list rucounters https://easylist-downloads.adblockplus.org/cntblock.txt
 fetch_list adguard-base https://filters.adtidy.org/extension/ublock/filters/2_without_easylist.txt
 fetch_list adguard-russian https://filters.adtidy.org/extension/ublock/filters/1.txt
-fetch_list adguard-tracking https://filters.adtidy.org/extension/ublock/filters/3.txt
 cp "$ROOT/ui/nlui/content/lib/netloom-rules.txt" "$RES/nlui/filters/netloom-rules.txt"
 
 step "Списки опасных сайтов"
@@ -253,7 +252,7 @@ PY
     for pt in 16 32 128 256 512; do
       for scale in 1 2; do
         px=$((pt * scale))
-        rsvg-convert -w $px -h $px "$ROOT/branding/$([ $px -le 24 ] && echo icon-small || echo icon).svg" \
+        rsvg-convert -w $px -h $px "$ROOT/branding/icon-mac.svg" \
           -o "$ICON/Assets.xcassets/AppIcon.appiconset/icon_${pt}x${pt}@${scale}x.png"
       done
     done

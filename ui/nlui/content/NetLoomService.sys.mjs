@@ -18,9 +18,10 @@ ChromeUtils.defineESModuleGetters(lazy, {
 
 const DAY = 24 * 3600 * 1000;
 const STATE_TOPIC = "netloom-state";
-const COUNT_TOPIC = "netloom-blocked";
 
-// Базы фильтров: Adblock (EasyList) и AdGuard вместе
+// Базы фильтров: Adblock (EasyList) и AdGuard вместе.
+// AdGuard Tracking Protection не берём: это 460 тысяч правил (400 МБ памяти) почти без пользы —
+// счётчики уже блокируют EasyPrivacy и встроенная защита от отслеживания движка.
 const LISTS = [
   { id: "easylist", urls: ["https://easylist.to/easylist/easylist.txt", "https://easylist-downloads.adblockplus.org/easylist.txt"] },
   { id: "easyprivacy", urls: ["https://easylist.to/easylist/easyprivacy.txt", "https://easylist-downloads.adblockplus.org/easyprivacy.txt"] },
@@ -28,7 +29,6 @@ const LISTS = [
   { id: "rucounters", urls: ["https://easylist-downloads.adblockplus.org/cntblock.txt"] },
   { id: "adguard-base", urls: ["https://filters.adtidy.org/extension/ublock/filters/2_without_easylist.txt"] },
   { id: "adguard-russian", urls: ["https://filters.adtidy.org/extension/ublock/filters/1.txt"] },
-  { id: "adguard-tracking", urls: ["https://filters.adtidy.org/extension/ublock/filters/3.txt"] },
   { id: "netloom-rules", urls: null }
 ];
 
@@ -181,7 +181,7 @@ for (const [k, v] of Object.entries({
 export const NetLoom = {
   settings: null,
   engine: null,
-  security: [], // [{kind, engine}]
+  security: [], // [{kind, list}]
   securityBypass: new Set(), // сайты, которые пользователь открыл «всё равно» (до перезапуска)
   engineStats: null,
   sheetURI: null,
@@ -189,11 +189,10 @@ export const NetLoom = {
   pings: {},
   core: null,
   coreLog: [],
-  blocked: new WeakMap(),
+  cosmeticCache: new Map(),
+  securityCount: 0,
   _initPromise: null,
   _saveTimer: null,
-  _countTimer: null,
-  _countDirty: new Set(),
 
   get dataDir() {
     return PathUtils.join(PathUtils.profileDir, "netloom");
@@ -216,6 +215,7 @@ export const NetLoom = {
     let stored = {};
     try { stored = await IOUtils.readJSON(PathUtils.join(this.dataDir, "settings.json")); } catch (e) {}
     this.settings = Object.assign({}, DEFAULTS, stored);
+    this.debug = Services.prefs.getBoolPref("netloom.debug", false);
 
     // сеть: маршрутизация через VPN и блокировка запросов
     const pps = Cc["@mozilla.org/network/protocol-proxy-service;1"].getService(Ci.nsIProtocolProxyService);
@@ -267,6 +267,7 @@ export const NetLoom = {
   },
 
   async loadFilters() {
+    const t = Cu.now();
     const engine = new NCFilters.Engine({});
     const texts = [];
     for (const L of LISTS) {
@@ -276,29 +277,32 @@ export const NetLoom = {
     engine.addLists(texts);
     this.engine = engine;
     this.engineStats = engine.stats();
+    this.cosmeticCache.clear();
     await this.applyStylesheet();
-    this.log("фильтры: " + JSON.stringify(this.engineStats));
+    this.log("фильтры: " + JSON.stringify(this.engineStats) + ", " + Math.round(Cu.now() - t) + " мс");
   },
 
   async loadSecurity() {
-    const engines = [];
+    const t = Cu.now();
+    const lists = [];
     for (const L of SECURITY_LISTS) {
       const text = await this.readList(L.id);
       if (!text) continue;
-      const engine = new NCFilters.Engine({ security: true });
-      engine.addLists([text]);
-      engines.push({ kind: L.kind, engine });
+      const list = new NCFilters.HostList();
+      list.add(text);
+      lists.push({ kind: L.kind, list });
     }
-    this.security = engines;
-    this.log("защита: списков " + engines.length + ", правил " + engines.reduce((n, x) => n + x.engine.stats().network, 0));
+    this.security = lists;
+    this.securityCount = lists.reduce((n, x) => n + x.list.count, 0);
+    this.log("защита: списков " + lists.length + ", адресов " + this.securityCount + ", " + Math.round(Cu.now() - t) + " мс");
   },
 
-  /** Опасен ли адрес: возвращает "malware" | "phishing" | "pup" или null */
-  dangerOf(url, host, type = "main_frame") {
+  /** Опасен ли адрес: возвращает "malware" | "phishing" или null */
+  dangerOf(url, host) {
     if (!this.settings?.security || !this.security.length) return null;
     if (this.securityBypass.has(host)) return null;
-    for (const { kind, engine } of this.security) {
-      if (engine.match({ url, host, type, docHost: "" })) return kind;
+    for (const { kind, list } of this.security) {
+      if (list.match(url, host)) return kind;
     }
     return null;
   },
@@ -320,7 +324,9 @@ export const NetLoom = {
     }
     this.sheetURI = null;
     if (!this.settings.adblock || !this.engine) return;
-    const css = this.engine.userStylesheet({ allowlist: this.settings.allowlist });
+    // общие правила — одна небольшая таблица; правила сайтов отдаёт cosmeticFor() для каждой страницы
+    const css = this.engine.genericStylesheet({ allowlist: this.settings.allowlist });
+    if (!css) return;
     const name = "cosmetic-" + Date.now() + ".css";
     const path = PathUtils.join(this.dataDir, name);
     await IOUtils.writeUTF8(path, css);
@@ -371,7 +377,12 @@ export const NetLoom = {
   },
 
   isAllowlisted(host) {
-    return !!host && !!suffixMatch(host, new Set(this.settings.allowlist));
+    if (!host || !this.settings.allowlist.length) return false;
+    if (this._allowSrc !== this.settings.allowlist) {
+      this._allowSrc = this.settings.allowlist;
+      this._allowSet = new Set(this.settings.allowlist);
+    }
+    return !!suffixMatch(host, this._allowSet);
   },
 
   observe(subject, topic) {
@@ -386,15 +397,14 @@ export const NetLoom = {
     const li = channel.loadInfo;
     if (!li || !li.browsingContextID) return;
     const type = TYPE_NAMES.get(li.externalContentPolicyType) || "other";
-    const bc = BrowsingContext.get(li.browsingContextID);
-    const top = bc?.top;
+    const top = BrowsingContext.get(li.browsingContextID)?.top;
     const browser = top?.embedderElement;
 
     // защита от опасных сайтов: страницы, рамки и загрузки
     if (this.settings.security && this.security.length) {
       const uri = channel.URI;
       if (/^(https?|wss?)$/.test(uri.scheme)) {
-        const danger = this.dangerOf(uri.spec, uri.host, type);
+        const danger = this.dangerOf(uri.spec, uri.host);
         if (danger) {
           channel.cancel(Cr.NS_ERROR_ABORT);
           this.log("заблокирован опасный адрес (" + danger + "): " + uri.host);
@@ -411,11 +421,7 @@ export const NetLoom = {
       }
     }
 
-    if (!this.settings.adblock || !this.engine) return;
-    if (type === "main_frame") {
-      if (browser) this.setCount(browser, 0);
-      return;
-    }
+    if (!this.settings.adblock || !this.engine || type === "main_frame") return;
     const principal = li.loadingPrincipal;
     if (!principal || !principal.isContentPrincipal) return;
     let topHost = "";
@@ -425,26 +431,21 @@ export const NetLoom = {
     if (!/^(https?|wss?)$/.test(uri.scheme)) return;
     let docHost = "";
     try { docHost = principal.host || topHost; } catch (e) { docHost = topHost; }
-    const r = this.engine.match({ url: uri.spec, host: uri.host, type, docHost });
-    if (r) {
-      channel.cancel(Cr.NS_ERROR_ABORT);
-      if (browser) this.setCount(browser, (this.blocked.get(browser) || 0) + 1);
+    if (this.engine.match({ url: uri.spec, host: uri.host, type, docHost })) channel.cancel(Cr.NS_ERROR_ABORT);
+  },
+
+  /** CSS скрытия рекламы для одной страницы (его запрашивает страница при загрузке) */
+  cosmeticFor(host, topHost) {
+    if (!this.settings?.adblock || !this.engine || !host) return "";
+    if (this.isAllowlisted(topHost || host)) return "";
+    let css = this.cosmeticCache.get(host);
+    if (css === undefined) {
+      css = this.engine.cosmeticFor(host);
+      if (this.cosmeticCache.size > 500) this.cosmeticCache.clear();
+      this.cosmeticCache.set(host, css);
+      if (this.debug) this.log("скрытие рекламы: " + host + " — " + css.length + " Б");
     }
-  },
-
-  setCount(browser, n) {
-    this.blocked.set(browser, n);
-    this._countDirty.add(browser);
-    if (this._countTimer) return;
-    this._countTimer = lazy.setTimeout(() => {
-      this._countTimer = null;
-      for (const b of this._countDirty) Services.obs.notifyObservers(b, COUNT_TOPIC);
-      this._countDirty.clear();
-    }, 250);
-  },
-
-  blockedFor(browser) {
-    return (browser && this.blocked.get(browser)) || 0;
+    return css;
   },
 
   async setAdblock(on) {

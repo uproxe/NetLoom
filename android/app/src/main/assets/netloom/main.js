@@ -16,7 +16,6 @@ const LISTS = [
   { id: 'rucounters', urls: ['https://easylist-downloads.adblockplus.org/cntblock.txt'] },
   { id: 'adguard-base', urls: ['https://filters.adtidy.org/extension/ublock/filters/2_without_easylist.txt'] },
   { id: 'adguard-russian', urls: ['https://filters.adtidy.org/extension/ublock/filters/1.txt'] },
-  { id: 'adguard-tracking', urls: ['https://filters.adtidy.org/extension/ublock/filters/3.txt'] },
   { id: 'netloom-rules', urls: null }
 ];
 // Опасные сайты: проверка идёт на телефоне, адреса никуда не отправляются
@@ -45,9 +44,8 @@ let settings = null;
 const state = {
   engine: null,
   engineStats: null,
-  security: [],               // [{kind, engine}]
+  security: [],               // [{kind, list}]
   securityBypass: new Set(),  // сайты, открытые «всё равно» (до перезапуска)
-  excludedGeneric: new Set(),
   genericReg: null,
   tabTop: new Map(),
   blocked: new Map(),
@@ -131,23 +129,22 @@ async function loadEngine() {
   await registerGenericCSS();
 }
 
+// списки опасных сайтов — просто адреса: храним множеством строк, это в разы легче правил
 async function loadSecurity() {
-  const engines = [];
+  const lists = [];
   for (const L of SECURITY_LISTS) {
     const text = await readList(L.id);
     if (!text) continue;
-    const engine = new NCFilters.Engine({ security: true });
-    engine.addLists([text]);
-    engines.push({ kind: L.kind, engine: engine });
+    const list = new NCFilters.HostList();
+    list.add(text);
+    lists.push({ kind: L.kind, list: list });
   }
-  state.security = engines;
+  state.security = lists;
 }
 
-function dangerOf(url, host, type) {
+function dangerOf(url, host) {
   if (!settings.security || !state.security.length || state.securityBypass.has(host)) return null;
-  for (const s of state.security) {
-    if (s.engine.match({ url: url, host: host, type: type, docHost: '' })) return s.kind;
-  }
+  for (const s of state.security) if (s.list.match(url, host)) return s.kind;
   return null;
 }
 
@@ -157,10 +154,11 @@ async function registerGenericCSS() {
     state.genericReg = null;
   }
   if (!settings.adblock || !state.engine) return;
-  state.excludedGeneric = new Set(state.engine.genericExcludedDomains());
-  const css = state.engine.genericCSS();
-  if (!css) return;
-  const exclude = Array.from(state.excludedGeneric).concat(settings.allowlist)
+  // общие правила — только «дешёвые» селекторы (#id, .class), одной таблицей на все сайты
+  const sels = state.engine.genericSelectors();
+  if (!sels.length) return;
+  const css = sels.map(function (s) { return s + '{display:none!important}'; }).join('\n');
+  const exclude = state.engine.genericExcludedDomains().concat(settings.allowlist)
     .filter(function (d) { return /^[a-z0-9.\-]+$/.test(d) && d.indexOf('.') > 0; })
     .map(function (d) { return '*://*.' + d + '/*'; });
   try {
@@ -226,7 +224,7 @@ function onBeforeRequest(d) {
 
   // защита от опасных сайтов: страницы, рамки и загрузки
   if (settings.security && state.security.length) {
-    const kind = dangerOf(d.url, host, d.type);
+    const kind = dangerOf(d.url, host);
     if (kind) {
       if (d.type === 'main_frame') {
         return { redirectUrl: BLOCKED_PAGE + '?kind=' + kind + '&url=' + encodeURIComponent(d.url) };
@@ -260,7 +258,7 @@ function onCommitted(d) {
   if (isAllowlisted(top) || isAllowlisted(host)) return;
   let css = state.cosmeticCache.get(host);
   if (css === undefined) {
-    css = state.engine.cosmeticFor(host, !!suffixHit(host, state.excludedGeneric));
+    css = state.engine.cosmeticFor(host);
     if (state.cosmeticCache.size > 300) state.cosmeticCache.clear();
     state.cosmeticCache.set(host, css);
   }
@@ -546,7 +544,7 @@ async function getState() {
     activeServerName: srv ? srv.name : '',
     pings: state.pings,
     filters: state.engineStats,
-    securityRules: state.security.reduce(function (n, x) { return n + x.engine.stats().network; }, 0),
+    securityRules: state.security.reduce(function (n, x) { return n + x.list.count; }, 0),
     blockedTotal: state.blockedTotal,
     app: app
   };
