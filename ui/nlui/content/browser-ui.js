@@ -207,6 +207,9 @@
     Services.obs.removeObserver(observer, "netloom-blocked");
   }, { once: true });
 
+  // своя новая вкладка не показывает адрес в строке
+  if (Array.isArray(window.gInitialPages) && !window.gInitialPages.includes(NEWTAB_URL)) window.gInitialPages.push(NEWTAB_URL);
+
   NetLoom.init().then(() => {
     updateVpn();
     updateShield();

@@ -10,8 +10,23 @@ ChromeUtils.defineESModuleGetters(lazy, {
   LoginHelper: "resource://gre/modules/LoginHelper.sys.mjs",
   MigrationUtils: "resource:///modules/MigrationUtils.sys.mjs",
   PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
-  ShellService: "resource:///modules/ShellService.sys.mjs",
 });
+ChromeUtils.defineLazyGetter(lazy, "ShellService", () => {
+  try {
+    return ChromeUtils.importESModule("moz-src:///browser/components/shell/ShellService.sys.mjs").ShellService;
+  } catch (e) {
+    return ChromeUtils.importESModule("resource:///modules/ShellService.sys.mjs").ShellService;
+  }
+});
+/** Служба поиска движка (в новых версиях — отдельный модуль) */
+function searchService() {
+  try {
+    return ChromeUtils.importESModule("moz-src:///toolkit/components/search/SearchService.sys.mjs").SearchService;
+  } catch (e) {
+    return typeof Services !== "undefined" ? Services.search : null;
+  }
+}
+
 
 const $ = id => document.getElementById(id);
 const topWin = () => window.browsingContext.topChromeWindow;
@@ -52,8 +67,9 @@ async function renderGeneral() {
     $("makeDefault").disabled = true;
   }
 
-  const engines = await Services.search.getVisibleEngines();
-  const current = await Services.search.getDefault();
+  const search = searchService();
+  const engines = await search.getVisibleEngines();
+  const current = await search.getDefault();
   const sel = $("engine");
   sel.textContent = "";
   for (const e of engines) {
@@ -73,8 +89,10 @@ $("makeDefault").addEventListener("click", async () => {
   }
 });
 $("engine").addEventListener("change", async e => {
-  const engine = Services.search.getEngineByName(e.target.value);
-  if (engine) await Services.search.setDefault(engine, Ci.nsISearchService.CHANGE_REASON_USER);
+  const search = searchService();
+  const engine = search.getEngineByName(e.target.value);
+  const reason = search.CHANGE_REASON?.USER ?? Ci.nsISearchService?.CHANGE_REASON_USER;
+  if (engine) await search.setDefault(engine, reason);
 });
 $("startup").addEventListener("change", e => Services.prefs.setIntPref("browser.startup.page", +e.target.value));
 

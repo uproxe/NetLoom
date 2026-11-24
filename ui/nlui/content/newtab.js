@@ -8,7 +8,16 @@ ChromeUtils.defineESModuleGetters(lazy, {
 });
 const $ = id => document.getElementById(id);
 const topWin = () => window.browsingContext?.topChromeWindow || null;
-const hasSearch = () => typeof Services !== "undefined" && !!Services.search;
+const hasSearch = () => !!searchService();
+/** Служба поиска движка (в новых версиях — отдельный модуль) */
+function searchService() {
+  try {
+    return ChromeUtils.importESModule("moz-src:///toolkit/components/search/SearchService.sys.mjs").SearchService;
+  } catch (e) {
+    return typeof Services !== "undefined" ? Services.search : null;
+  }
+}
+
 // запасной список, если страница открыта в отдельном процессе без доступа к поиску браузера
 const FALLBACK_ENGINES = [
   { name: "Google", url: "https://www.google.com/search?q=" },
@@ -33,7 +42,8 @@ async function go(text) {
   if (looksLikeAddress(text)) {
     url = /^[a-z][a-z0-9+.-]*:\/\//i.test(text) ? text : "https://" + text;
   } else if (hasSearch()) {
-    const engine = Services.search.getEngineByName($("engine").value) || (await Services.search.getDefault());
+    const search = searchService();
+    const engine = search.getEngineByName($("engine").value) || (await search.getDefault());
     url = engine.getSubmission(text).uri.spec;
   } else {
     const e = FALLBACK_ENGINES.find(x => x.name === $("engine").value) || FALLBACK_ENGINES[0];
@@ -46,8 +56,8 @@ async function init() {
   let engines = FALLBACK_ENGINES, def = FALLBACK_ENGINES[0];
   if (hasSearch()) {
     try {
-      engines = await Services.search.getVisibleEngines();
-      def = await Services.search.getDefault();
+      engines = await searchService().getVisibleEngines();
+      def = await searchService().getDefault();
     } catch (e) {}
   }
   for (const e of engines) {

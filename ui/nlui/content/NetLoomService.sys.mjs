@@ -224,6 +224,7 @@ export const NetLoom = {
     this.coreLog.push(line);
     if (this.coreLog.length > 300) this.coreLog.shift();
     Services.console.logStringMessage("NetLoom: " + msg);
+    dump("NetLoom: " + msg + "\n");
   },
 
   notify() {

@@ -7,14 +7,13 @@ import { NetLoom } from "chrome://netloom/content/NetLoomService.sys.mjs";
 
 const BROWSER_URL = "chrome://browser/content/browser.xhtml";
 // адреса, которые видит пользователь
-export const NEWTAB_URL = "about:newtab";
+export const NEWTAB_URL = "about:start";
 export const SETTINGS_URL = "about:settings";
 // где лежат страницы
 const PAGES = {
   settings: "chrome://netloom/content/settings.html",
   preferences: "chrome://netloom/content/settings.html",
-  newtab: "chrome://netloom/content/newtab.html",
-  home: "chrome://netloom/content/newtab.html",
+  start: "chrome://netloom/content/newtab.html",
 };
 
 /**
@@ -74,6 +73,10 @@ const Boot = {
     try {
       if (topic === "final-ui-startup") {
         NetLoom.init();
+        try {
+          const { AboutNewTab } = ChromeUtils.importESModule("resource:///modules/AboutNewTab.sys.mjs");
+          AboutNewTab.newTabURL = NEWTAB_URL;
+        } catch (e) { report("newtab", e); }
       } else if (topic === "chrome-document-global-created") {
         subject.addEventListener("DOMContentLoaded", () => this.onDocument(subject), { once: true });
       } else if (topic === "browser-delayed-startup-finished") {
