@@ -1,6 +1,7 @@
 /*
  * NetLoom — разбор ссылок VPN/прокси и сборка конфигурации ядра.
- * Поддерживается: vless://, vmess://, trojan://, ss://, socks://, socks5://, http://, https://
+ * Поддерживается: vless://, vmess://, trojan://, ss://, socks://, socks5://, http://, https://,
+ * hysteria2:// (hy2://), tuic://, wireguard:// (wg://), anytls://, ssh://
  * и подписки (список ссылок или base64 со списком ссылок).
  */
 (function (root) {
@@ -262,9 +263,91 @@
     return out;
   }
 
+  // ───────── Протоколы второго ядра (sing-box) ─────────
+  function boolParam(v) { return v === '1' || v === 'true'; }
+
+  function singTls(p, host, defaultAlpn) {
+    return clean({
+      enabled: true,
+      server_name: p.sni || p.peer || undefined,
+      insecure: boolParam(p.insecure) || boolParam(p.allowInsecure) || boolParam(p.allow_insecure) ? true : undefined,
+      alpn: splitList(p.alpn) || defaultAlpn,
+    });
+  }
+
+  function parseHysteria2(u) {
+    needHostPort(u);
+    const password = safeDecode(u.user || '');
+    if (!password) fail('В ссылке Hysteria2 нет пароля');
+    const p = u.params;
+    const out = {
+      type: 'hysteria2', server: u.host, server_port: u.port, password: password,
+      tls: singTls(p, u.host, ['h3'])
+    };
+    if (p.obfs && p.obfs !== 'none') out.obfs = clean({ type: p.obfs, password: p['obfs-password'] || p.obfs_password });
+    if (p.upmbps || p.up) out.up_mbps = parseInt(p.upmbps || p.up, 10) || undefined;
+    if (p.downmbps || p.down) out.down_mbps = parseInt(p.downmbps || p.down, 10) || undefined;
+    return clean(out);
+  }
+
+  function parseTuic(u) {
+    needHostPort(u);
+    const ui = safeDecode(u.user || '');
+    const c = ui.indexOf(':');
+    const uuid = c >= 0 ? ui.slice(0, c) : ui;
+    const password = c >= 0 ? ui.slice(c + 1) : (u.params.password || '');
+    if (!uuid) fail('В ссылке TUIC нет UUID');
+    const p = u.params;
+    return clean({
+      type: 'tuic', server: u.host, server_port: u.port, uuid: uuid, password: password,
+      congestion_control: p.congestion_control || p.congestion || 'bbr',
+      udp_relay_mode: p.udp_relay_mode || undefined,
+      tls: singTls(p, u.host, ['h3'])
+    });
+  }
+
+  function parseAnyTls(u) {
+    needHostPort(u);
+    const password = safeDecode(u.user || '');
+    if (!password) fail('В ссылке AnyTLS нет пароля');
+    return { type: 'anytls', server: u.host, server_port: u.port, password: password, tls: singTls(u.params, u.host) };
+  }
+
+  function parseSsh(u) {
+    needHostPort(u);
+    const up = userPass(u);
+    if (!up || !up.user) fail('В ссылке SSH нет пользователя');
+    return clean({ type: 'ssh', server: u.host, server_port: u.port, user: up.user, password: up.pass || undefined });
+  }
+
+  function parseWireGuard(u) {
+    needHostPort(u);
+    const p = u.params;
+    const privateKey = safeDecode(u.user || '') || p.privatekey || p.secretkey || p.private_key;
+    const publicKey = p.publickey || p.public_key || p.peer_public_key;
+    if (!privateKey) fail('В ссылке WireGuard нет приватного ключа');
+    if (!publicKey) fail('В ссылке WireGuard нет публичного ключа сервера (publickey)');
+    const address = splitList(p.address || p.ip || p.addresses) || ['10.0.0.2/32'];
+    const peer = clean({
+      address: u.host, port: u.port, public_key: publicKey,
+      pre_shared_key: p.presharedkey || p.preshared_key || p.psk || undefined,
+      allowed_ips: ['0.0.0.0/0', '::/0'],
+      reserved: p.reserved ? p.reserved.split(',').map(function (x) { return parseInt(x, 10) || 0; }) : undefined,
+      persistent_keepalive_interval: p.keepalive ? parseInt(p.keepalive, 10) : undefined
+    });
+    return clean({
+      type: 'wireguard',
+      address: address.map(function (a) { return a.indexOf('/') > 0 ? a : (a.indexOf(':') >= 0 ? a + '/128' : a + '/32'); }),
+      private_key: privateKey,
+      mtu: p.mtu ? parseInt(p.mtu, 10) : 1408,
+      peers: [peer]
+    });
+  }
+
   const PROTO_TITLE = {
     vless: 'VLESS', vmess: 'VMess', trojan: 'Trojan', shadowsocks: 'Shadowsocks',
-    socks: 'SOCKS5', http: 'HTTP-прокси'
+    socks: 'SOCKS5', http: 'HTTP-прокси', hysteria2: 'Hysteria2', tuic: 'TUIC',
+    wireguard: 'WireGuard', anytls: 'AnyTLS', ssh: 'SSH'
   };
 
   /** Отличить подписку от http-прокси: у подписки есть путь или параметры */
@@ -282,9 +365,9 @@
   function parseLink(link) {
     link = String(link || '').trim();
     const sm = /^([a-z0-9+.\-]+):\/\//i.exec(link);
-    if (!sm) fail('Ссылка должна начинаться с vless://, vmess://, trojan://, ss://, socks:// или http://');
+    if (!sm) fail('Ссылка должна начинаться с vless://, vmess://, trojan://, ss://, hysteria2://, tuic://, wireguard://, anytls://, ssh://, socks:// или http://');
     const scheme = sm[1].toLowerCase();
-    let outbound, name = '', host = '', port = 0;
+    let outbound, endpoint = null, core = 'xray', name = '', host = '', port = 0;
 
     if (scheme === 'vless' || scheme === 'trojan') {
       const u = parseURL(link);
@@ -298,19 +381,31 @@
       const u = parseURL(link); outbound = parseSocks(u); name = u.name; host = u.host; port = u.port;
     } else if (scheme === 'http' || scheme === 'https') {
       const u = parseURL(link); outbound = parseHttpProxy(u); name = u.name; host = u.host; port = u.port;
-    } else if (/^(hysteria2|hy2|hysteria|tuic|wireguard|wg|anytls|naive\+https)$/.test(scheme)) {
+    } else if (scheme === 'hysteria2' || scheme === 'hy2') {
+      const u = parseURL(link); outbound = parseHysteria2(u); core = 'sing-box'; name = u.name; host = u.host; port = u.port;
+    } else if (scheme === 'tuic') {
+      const u = parseURL(link); outbound = parseTuic(u); core = 'sing-box'; name = u.name; host = u.host; port = u.port;
+    } else if (scheme === 'anytls') {
+      const u = parseURL(link); outbound = parseAnyTls(u); core = 'sing-box'; name = u.name; host = u.host; port = u.port;
+    } else if (scheme === 'ssh') {
+      const u = parseURL(link); outbound = parseSsh(u); core = 'sing-box'; name = u.name; host = u.host; port = u.port;
+    } else if (scheme === 'wireguard' || scheme === 'wg') {
+      const u = parseURL(link); endpoint = parseWireGuard(u); core = 'sing-box'; name = u.name; host = u.host; port = u.port;
+    } else if (/^(hysteria|naive\+https|naive\+quic)$/.test(scheme)) {
       fail('Протокол ' + scheme + ' пока не поддерживается');
     } else {
       fail('Неизвестный протокол: ' + scheme);
     }
-    const proto = outbound.protocol;
+    const proto = core === 'xray' ? outbound.protocol : (endpoint || outbound).type;
     return {
       proto: proto,
+      core: core,
       title: PROTO_TITLE[proto] || proto,
       name: name || (PROTO_TITLE[proto] + ' ' + host + ':' + port),
       address: host,
       port: port,
-      outbound: outbound
+      outbound: outbound || null,
+      endpoint: endpoint
     };
   }
 
@@ -360,7 +455,38 @@
     };
   }
 
+  /**
+   * Конфигурация второго ядра (sing-box): локальный SOCKS5 с паролем → сервер.
+   * Порт 0 заменяет служба браузера на свободный.
+   */
+  function buildSingboxConfig(parsed, creds) {
+    const cfg = {
+      log: { level: 'warn' },
+      inbounds: [{ type: 'socks', tag: 'local-in', listen: '127.0.0.1', listen_port: 0,
+        users: [{ username: creds.user, password: creds.pass }] }],
+      outbounds: [{ type: 'direct', tag: 'direct' }],
+      route: { final: 'proxy' }
+    };
+    if (parsed.endpoint) {
+      // WireGuard работает на уровне IP: имена сайтов разрешаем через туннель, чтобы не было утечки DNS
+      cfg.endpoints = [Object.assign({ tag: 'proxy' }, parsed.endpoint)];
+      cfg.dns = { servers: [{ type: 'udp', tag: 'remote', server: '1.1.1.1', detour: 'proxy' }], final: 'remote' };
+      cfg.route.default_domain_resolver = 'remote';
+    } else {
+      cfg.outbounds.unshift(Object.assign({ tag: 'proxy' }, parsed.outbound));
+    }
+    return cfg;
+  }
+
+  /** Конфигурация нужного ядра для разобранной ссылки */
+  function buildConfig(parsed, creds) {
+    if (parsed.core === 'sing-box') return { core: 'sing-box', config: buildSingboxConfig(parsed, creds) };
+    return { core: 'xray', config: buildCoreConfig(parsed.outbound, creds) };
+  }
+
   const api = {
+    buildConfig: buildConfig,
+    buildSingboxConfig: buildSingboxConfig,
     parseLink: parseLink, parseSubscription: parseSubscription, parseUserInfo: parseUserInfo,
     buildCoreConfig: buildCoreConfig, isSubscriptionURL: isSubscriptionURL, b64decode: b64decode
   };

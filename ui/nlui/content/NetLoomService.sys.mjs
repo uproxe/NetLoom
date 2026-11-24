@@ -187,9 +187,9 @@ export const NetLoom = {
   get installDir() {
     return Services.dirsvc.get("GreD", Ci.nsIFile).path;
   },
-  get corePath() {
-    const exe = lazy.AppConstants.platform === "win" ? "xray.exe" : "xray";
-    return PathUtils.join(this.installDir, "cores", "xray", exe);
+  corePath(core) {
+    const exe = core + (lazy.AppConstants.platform === "win" ? ".exe" : "");
+    return PathUtils.join(this.installDir, "cores", core, exe);
   },
 
   init() {
@@ -454,9 +454,9 @@ export const NetLoom = {
     try { parsed = NCLinks.parseLink(srv.link); } catch (e) { return this.setVpnStatus("error", e.message); }
     this.setVpnStatus("connecting");
     const creds = { user: randomHex(8), pass: randomHex(16) };
-    const config = NCLinks.buildCoreConfig(parsed.outbound, creds);
+    const { core, config } = NCLinks.buildConfig(parsed, creds);
     try {
-      const port = await this.startCore(config);
+      const port = await this.startCore(core, config);
       if (gen !== this.vpn.gen) return;
       Object.assign(this.vpn, { port, user: creds.user, pass: creds.pass });
       this.setVpnStatus("connected");
@@ -473,15 +473,17 @@ export const NetLoom = {
     this.setVpnStatus("off");
   },
 
-  async startCore(config) {
+  async startCore(core, config) {
     await this.stopCore();
-    if (!(await IOUtils.exists(this.corePath))) throw new Error("Не найдено ядро VPN (cores\\xray)");
+    const exe = this.corePath(core);
+    if (!(await IOUtils.exists(exe))) throw new Error("Не найдено ядро VPN (cores\\" + core + ")");
     const port = freePort();
-    config.inbounds[0].port = port;
+    if (core === "sing-box") config.inbounds[0].listen_port = port;
+    else config.inbounds[0].port = port;
     const proc = await lazy.Subprocess.call({
-      command: this.corePath,
-      arguments: ["run", "-config", "stdin:"],
-      workdir: PathUtils.parent(this.corePath),
+      command: exe,
+      arguments: core === "sing-box" ? ["run", "-c", "stdin"] : ["run", "-config", "stdin:"],
+      workdir: PathUtils.parent(exe),
       stderr: "stdout",
     });
     this.core = proc;

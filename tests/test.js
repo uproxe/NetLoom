@@ -262,7 +262,7 @@ test('разбор подписки base64', function () {
 test('ошибки понятны', function () {
   assert.throws(function () { L.parseLink('vless://bad@ex.com:443'); }, /UUID/);
   assert.throws(function () { L.parseLink('vless://11111111-2222-3333-4444-555555555555@ex.com:443?security=reality'); }, /pbk/);
-  assert.throws(function () { L.parseLink('hysteria2://x@y:1'); }, /не поддерживается/);
+  assert.throws(function () { L.parseLink('hysteria://x@y:1'); }, /не поддерживается/);
   assert.throws(function () { L.parseLink('просто текст'); });
 });
 test('конфигурация ядра', function () {
@@ -274,7 +274,51 @@ test('конфигурация ядра', function () {
   assert.strictEqual(c.outbounds[0].protocol, 'vless');
   JSON.stringify(c);
 });
-test('подписка userinfo', function () {
+test('Hysteria2', function () {
+  const p = L.parseLink('hysteria2://p%40ss@hy.ex.com:8443/?sni=hy.ex.com&obfs=salamander&obfs-password=ob&insecure=1#Хай');
+  assert.strictEqual(p.core, 'sing-box');
+  assert.strictEqual(p.title, 'Hysteria2');
+  assert.strictEqual(p.outbound.password, 'p@ss');
+  assert.strictEqual(p.outbound.obfs.type, 'salamander');
+  assert.strictEqual(p.outbound.tls.insecure, true);
+  assert.strictEqual(L.parseLink('hy2://pw@1.2.3.4:443').outbound.server_port, 443);
+});
+test('TUIC', function () {
+  const o = L.parseLink('tuic://11111111-2222-3333-4444-555555555555:secret@t.ex.com:443?congestion_control=bbr&alpn=h3&sni=t.ex.com&udp_relay_mode=native#T').outbound;
+  assert.strictEqual(o.uuid, '11111111-2222-3333-4444-555555555555');
+  assert.strictEqual(o.password, 'secret');
+  assert.deepStrictEqual(o.tls.alpn, ['h3']);
+});
+test('WireGuard', function () {
+  const p = L.parseLink('wireguard://cHJpdmF0ZWtleQ%3D%3D@wg.ex.com:51820?publickey=cHVibGlja2V5&address=10.7.0.2,fd00::2&mtu=1420&reserved=1,2,3#WG');
+  assert.strictEqual(p.core, 'sing-box');
+  assert.strictEqual(p.endpoint.private_key, 'cHJpdmF0ZWtleQ==');
+  assert.deepStrictEqual(p.endpoint.address, ['10.7.0.2/32', 'fd00::2/128']);
+  assert.deepStrictEqual(p.endpoint.peers[0].reserved, [1, 2, 3]);
+  const c = L.buildConfig(p, { user: 'u', pass: 'p' });
+  assert.strictEqual(c.core, 'sing-box');
+  assert.strictEqual(c.config.endpoints[0].tag, 'proxy');
+  assert.strictEqual(c.config.route.default_domain_resolver, 'remote');
+  assert.throws(function () { L.parseLink('wireguard://key@h.com:1'); }, /publickey/);
+});
+test('AnyTLS и SSH', function () {
+  assert.strictEqual(L.parseLink('anytls://pw@a.ex.com:443?sni=a.ex.com').outbound.type, 'anytls');
+  const s = L.parseLink('ssh://root:toor@10.0.0.5:22#Сервер');
+  assert.strictEqual(s.outbound.user, 'root');
+  assert.strictEqual(s.outbound.password, 'toor');
+});
+test('конфигурация второго ядра', function () {
+  const p = L.parseLink('hysteria2://pw@h.com:443');
+  const c = L.buildConfig(p, { user: 'u', pass: 'p' });
+  assert.strictEqual(c.config.inbounds[0].type, 'socks');
+  assert.strictEqual(c.config.inbounds[0].users[0].username, 'u');
+  assert.strictEqual(c.config.outbounds[0].tag, 'proxy');
+  assert.strictEqual(c.config.route.final, 'proxy');
+  const x = L.buildConfig(L.parseLink('trojan://pw@t.com:443'), { user: 'u', pass: 'p' });
+  assert.strictEqual(x.core, 'xray');
+});
+test('подписка userinfo'
+, function () {
   const i = L.parseUserInfo('upload=1024; download=2048; total=10737418240; expire=1767225600');
   assert.strictEqual(i.total, 10737418240);
   assert.strictEqual(i.expire, 1767225600);
