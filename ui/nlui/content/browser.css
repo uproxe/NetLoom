@@ -86,6 +86,7 @@
 #urlbar-searchmode-switcher,
 .searchmode-switcher,
 #personal-toolbar-empty-description,
+#reset-pbm-toolbar-button,
 #picture-in-picture-button,
 #pageActionButton,
 #reader-mode-button,
@@ -135,9 +136,16 @@
   background-color: var(--nl-field) !important;
   box-shadow: none !important;
 }
-#urlbar[focused] > #urlbar-background {
+#urlbar[focused] > #urlbar-background,
+#urlbar[open] > #urlbar-background,
+#urlbar[breakout-extend] > #urlbar-background {
+  background-color: var(--nl-field) !important;
   border-color: var(--nl-accent) !important;
   outline: none !important;
+  box-shadow: none !important;
+}
+#urlbar .urlbarView {
+  background-color: var(--nl-surface) !important;
 }
 #urlbar-input::placeholder {
   color: var(--nl-muted) !important;

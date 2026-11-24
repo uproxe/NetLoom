@@ -36,15 +36,15 @@ xdotool key Escape; sleep 1
 xdotool mousemove 1296 68 click 1; sleep 3
 shot 4-vpn
 xdotool key Escape; sleep 1
-xdotool key --clearmodifiers ctrl+shift+p; sleep 5
-shot 5-privatnoe
-xdotool key --clearmodifiers ctrl+shift+w; sleep 2
 # Настройки: меню → «Настройки» (вторая снизу)
 xdotool mousemove 1347 68 click 1; sleep 2
 xdotool key Up Up Return; sleep 5
 shot 6-nastroiki
 xdotool key --clearmodifiers End; sleep 2
 shot 7-nastroiki-niz
+# приватное окно — последним
+xdotool key --clearmodifiers ctrl+shift+p; sleep 5
+shot 5-privatnoe
 pkill -f "$BIN" || true
 sleep 2
 echo "---- сообщения NetLoom и ошибки ----"
