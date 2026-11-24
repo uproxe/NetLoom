@@ -27,7 +27,11 @@ jobs:
         shell: bash
         run: |
           TAG="${{ inputs.tag }}"; [ -n "$TAG" ] || TAG="v$(cat VERSION)"
-          gh release download "$TAG" --pattern '*-windows-x64-setup.exe' --dir dl
+          # релиз может быть ещё черновиком — ищем файл через общий список релизов
+          ID="$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq ".[] | select(.tag_name == \"$TAG\") | .assets[] | select(.name | endswith(\"-windows-x64-setup.exe\")) | .id" | head -1)"
+          [ -n "$ID" ] || { echo "в релизе $TAG нет установщика"; exit 1; }
+          mkdir -p dl
+          gh api -H "Accept: application/octet-stream" "repos/$GITHUB_REPOSITORY/releases/assets/$ID" > dl/NetLoom-setup.exe
           ls -la dl
       - name: Установка
         shell: pwsh
