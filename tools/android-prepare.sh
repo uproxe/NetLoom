@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Готовит приложение Android к сборке: общие библиотеки из ui/, списки фильтров, ядра VPN.
-#   bash tools/android-prepare.sh
+#   bash tools/android-prepare.sh [arm64-v8a|x86_64]   (x86_64 — только для проверки на эмуляторе)
 set -euo pipefail
+ABI="${1:-arm64-v8a}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP="$ROOT/android/app/src/main"
 EXT="$APP/assets/netloom"
@@ -51,16 +52,25 @@ print(rel["tag_name"])
 PY
 }
 
-step "Ядра VPN для Android (arm64)"
-LIBS="$APP/jniLibs/arm64-v8a"
+step "Ядра VPN для Android ($ABI)"
+LIBS="$APP/jniLibs/$ABI"
 rm -rf "$APP/jniLibs"; mkdir -p "$LIBS"
-XRAY_TAG="$(release_asset XTLS/Xray-core 'Xray-android-arm64-v8a\.zip' "$TMP/xray.zip")"
-unzip -q "$TMP/xray.zip" -d "$TMP/xray"
-cp "$TMP/xray/xray" "$LIBS/libxray.so"
-SB_TAG="$(release_asset SagerNet/sing-box 'sing-box-[0-9.]+-android-arm64\.tar\.gz' "$TMP/sb.tgz")"
-mkdir -p "$TMP/sb"; tar -xzf "$TMP/sb.tgz" -C "$TMP/sb"
-cp "$TMP"/sb/*/sing-box "$LIBS/libsingbox.so"
-chmod 755 "$LIBS"/*.so
-file "$LIBS"/*.so || true
-echo "    Xray-core $XRAY_TAG, sing-box $SB_TAG"
+case "$ABI" in
+  arm64-v8a) XP='Xray-android-arm64-v8a\.zip'; SP='sing-box-[0-9.]+-android-arm64\.tar\.gz' ;;
+  x86_64)    XP='Xray-android-amd64\.zip';     SP='sing-box-[0-9.]+-android-amd64\.tar\.gz' ;;
+  *) echo "Неизвестная архитектура $ABI"; exit 2 ;;
+esac
+# для эмулятора ядра не обязательны: проверяется интерфейс, блокировка и защита
+optional() { [ "$ABI" = x86_64 ] && { echo "    $1 для $ABI не найдено — пропускаю"; return 0; }; exit 1; }
+if XRAY_TAG="$(release_asset XTLS/Xray-core "$XP" "$TMP/xray.zip")"; then
+  unzip -q "$TMP/xray.zip" -d "$TMP/xray"
+  cp "$TMP/xray/xray" "$LIBS/libxray.so"
+else optional Xray; fi
+if SB_TAG="$(release_asset SagerNet/sing-box "$SP" "$TMP/sb.tgz")"; then
+  mkdir -p "$TMP/sb"; tar -xzf "$TMP/sb.tgz" -C "$TMP/sb"
+  cp "$TMP"/sb/*/sing-box "$LIBS/libsingbox.so"
+else optional sing-box; fi
+chmod 755 "$LIBS"/*.so 2>/dev/null || true
+file "$LIBS"/*.so 2>/dev/null || true
+echo "    Xray-core ${XRAY_TAG:-—}, sing-box ${SB_TAG:-—}"
 rm -rf "$TMP"

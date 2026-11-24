@@ -129,3 +129,71 @@ jobs:
           gh release upload "$TAG" --clobber \
             "dist/NetLoom-$VER-android-arm64.apk#Android — телефоны с 64-битным процессором (движок ${{ steps.gv.outputs.version }})"
           bash tools/release-finish.sh "$TAG"
+
+  emulator:
+    name: Проверка на эмуляторе
+    needs: apk
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Версии
+        id: v
+        run: |
+          GV="$(curl -fsSL https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/maven-metadata.xml | grep -oP '(?<=<release>)[^<]+')"
+          curl -fsSL -o gv.aar "https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/$GV/geckoview-$GV.aar"
+          META="$(unzip -p gv.aar META-INF/com/android/build/gradle/aar-metadata.properties | tr -d '\r')"; rm -f gv.aar
+          AGP="$(curl -fsSL https://dl.google.com/dl/android/maven2/com/android/tools/build/gradle/maven-metadata.xml \
+            | grep -oP '(?<=<version>)9\.[0-9]+\.[0-9]+(?=</version>)' | sort -V | tail -1)"
+          GRADLE="$(curl -fsSL https://services.gradle.org/versions/all \
+            | python3 -c "import json,sys; v=[x['version'] for x in json.load(sys.stdin) if not (x['snapshot'] or x['nightly'] or x['releaseNightly'] or x['broken'] or x['rcFor'] or x['milestoneFor']) and x['version'].startswith('9.')]; print(sorted(v, key=lambda s: [int(p) for p in s.split('.')])[-1])")"
+          {
+            echo "gv=$GV"; echo "agp=$AGP"; echo "gradle=$GRADLE"
+            echo "sdk_major=$(sed -n 's/^minCompileSdk=//p' <<<"$META")"
+            echo "sdk_minor=$(sed -n 's/^minCompileMinorSdk=//p' <<<"$META")"
+          } >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: ${{ steps.v.outputs.gradle }}
+      - name: Сборка для эмулятора (x86_64)
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          bash tools/android-prepare.sh x86_64
+          # тестовый «опасный» адрес — проверка блокировки
+          printf '\n||danger-test.invalid^\n' >> android/app/src/main/assets/netloom/filters/urlhaus.txt
+          gradle -p android --no-daemon assembleRelease -Pabi=x86_64 \
+            -PgeckoviewVersion="${{ steps.v.outputs.gv }}" -PagpVersion="${{ steps.v.outputs.agp }}" \
+            -PcompileSdkMajor="${{ steps.v.outputs.sdk_major }}" -PcompileSdkMinor="${{ steps.v.outputs.sdk_minor }}"
+      - name: Доступ к виртуализации
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Запуск на эмуляторе
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: bash tools/android-smoke.sh android/app/build/outputs/apk/release/app-release.apk shots
+      - name: Снимки в ветку preview
+        if: always()
+        run: |
+          [ -d shots ] && ls shots/*.png >/dev/null 2>&1 || exit 0
+          # автор коммита — тот же, что у последнего коммита в main (владелец репозитория)
+          git config user.name "$(git log -1 --format=%an origin/main)"
+          git config user.email "$(git log -1 --format=%ae origin/main)"
+          git worktree add -q /tmp/preview origin/preview || exit 0
+          mkdir -p /tmp/preview/android && rm -f /tmp/preview/android/*.png
+          cp shots/*.png /tmp/preview/android/
+          cd /tmp/preview && git add -A android && git commit -qm "Снимки Android" && git push -q origin HEAD:preview || true
