@@ -124,7 +124,7 @@ async function render() {
   }
   if (document.activeElement !== $('allowlist')) $('allowlist').value = S.allowlist.join('\n');
   $('security').checked = S.security;
-  if (S.securityRules) $('secStats').textContent = 'Вирусы, фишинг и нежелательные программы: ' + S.securityRules.toLocaleString('ru-RU') + ' адресов. Проверка идёт на телефоне, без Google.';
+  if (S.securityRules) $('secStats').textContent = 'Сайты с вирусами и фишингом: ' + S.securityRules.toLocaleString('ru-RU') + ' адресов. Проверка идёт на телефоне, без Google.';
 
   // настройки приложения
   const app = S.app || {};
