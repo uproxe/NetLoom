@@ -1,0 +1,114 @@
+name: Движок
+
+# Собирает движок NetLoom (Gecko ESR) для Windows x64.
+# Раз в сутки проверяет, не вышла ли новая версия ESR (исправления безопасности),
+# и если вышла — собирает её. Готовый движок публикуется в релиз engine-<версия>.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Версия ESR, например 153.7.0 (пусто — последняя)"
+        required: false
+        default: ""
+      force:
+        description: "Собрать заново, даже если эта версия уже есть"
+        type: boolean
+        default: false
+  schedule:
+    - cron: "23 2 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: engine
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Проверка версии
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      build: ${{ steps.v.outputs.build }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_FORCE: ${{ inputs.force }}
+        run: |
+          V="$INPUT_VERSION"
+          [ -n "$V" ] || V="$(bash engine/latest-version.sh)"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          if gh release view "engine-$V" >/dev/null 2>&1 && [ "$INPUT_FORCE" != "true" ]; then
+            echo "Движок $V уже собран"
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Нужна сборка движка $V"
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    name: Сборка движка ${{ needs.check.outputs.version }}
+    needs: check
+    if: needs.check.outputs.build == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+      CARGO_INCREMENTAL: "0"
+      CARGO_TERM_COLOR: always
+      MOZBUILD_STATE_PATH: /home/runner/.mozbuild
+    steps:
+      - name: Освободить место на диске
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: false
+
+      - uses: actions/checkout@v4
+
+      - name: Кэш компиляции
+        uses: mozilla-actions/sccache-action@main
+
+      - name: Системные пакеты
+        run: |
+          sudo apt-get -o Acquire::Retries=3 update
+          sudo apt-get -o Acquire::Retries=3 install -y \
+            build-essential curl git m4 msitools nasm p7zip-full python3 python3-pip \
+            python3-venv unzip uuid-dev yasm zip zstd
+          df -h /
+
+      - name: Кэш инструментов кросс-сборки
+        uses: actions/cache@v4
+        with:
+          path: ~/win-cross
+          key: win-cross-v1-${{ hashFiles('engine/ESR_MAJOR') }}
+
+      - name: Сборка
+        run: bash engine/build.sh "${{ needs.check.outputs.version }}"
+
+      - name: Место на диске после сборки
+        if: always()
+        run: df -h /; sccache --show-stats || true
+
+      - name: Публикация
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ needs.check.outputs.version }}
+        run: |
+          gh release delete "engine-$V" --yes --cleanup-tag 2>/dev/null || true
+          shopt -s nullglob
+          FILES=(out/netloom-engine-*.zip out/*.xpi)
+          gh release create "engine-$V" "${FILES[@]}" \
+            --title "Движок $V" \
+            --notes "Движок NetLoom на основе Gecko ESR $V для Windows x64. Служебный релиз: из него собирается браузер." \
+            --prerelease
