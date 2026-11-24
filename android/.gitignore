@@ -1,0 +1,8 @@
+.gradle/
+build/
+app/build/
+local.properties
+# скачиваются при сборке
+app/src/main/jniLibs/
+app/src/main/assets/netloom/lib/
+app/src/main/assets/netloom/filters/

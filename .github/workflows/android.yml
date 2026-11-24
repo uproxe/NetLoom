@@ -1,0 +1,121 @@
+name: Android
+
+# Собирает NetLoom для Android: свой интерфейс на движке GeckoView + встроенный модуль
+# (блокировка рекламы, защита от опасных сайтов, VPN) + ядра Xray и sing-box.
+# Раз в неделю проверяет, не вышла ли новая версия движка, и пересобирает приложение.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "41 3 * * 1"
+  push:
+    branches: [main]
+    paths:
+      - "android/**"
+      - "ui/nlui/content/lib/**"
+      - "tools/android-prepare.sh"
+      - "VERSION"
+      - ".github/workflows/android.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android
+  cancel-in-progress: true
+
+env:
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  apk:
+    name: Приложение Android
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Версия движка GeckoView
+        id: gv
+        run: |
+          GV="$(curl -fsSL https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/maven-metadata.xml | grep -oP '(?<=<release>)[^<]+')"
+          echo "GeckoView $GV"
+          echo "version=$GV" >> "$GITHUB_OUTPUT"
+          VER="$(cat VERSION)"; TAG="v$VER"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          LABEL="$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq ".[] | select(.tag_name == \"$TAG\") | .assets[] | select(.name == \"NetLoom-$VER-android-arm64.apk\") | .label")"
+          if [ "${{ github.event_name }}" = "schedule" ] && grep -q "движок $GV)" <<<"$LABEL"; then
+            echo "Приложение уже собрано на этом движке"; echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+          # какая версия Android SDK нужна движку
+          curl -fsSL -o gv.aar "https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/$GV/geckoview-$GV.aar"
+          SDK="$(unzip -p gv.aar META-INF/com/android/build/gradle/aar-metadata.properties 2>/dev/null | sed -n 's/^minCompileSdk=//p' | tr -d '\r')"
+          unzip -p gv.aar META-INF/com/android/build/gradle/aar-metadata.properties || true
+          rm -f gv.aar
+          echo "sdk=${SDK:-36}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-java@v4
+        if: steps.gv.outputs.skip != 'true'
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        if: steps.gv.outputs.skip != 'true'
+        with:
+          gradle-version: "8.14.3"
+
+      - name: Android SDK
+        if: steps.gv.outputs.skip != 'true'
+        run: |
+          SDK="${{ steps.gv.outputs.sdk }}"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-$SDK" "build-tools;36.0.0" | tail -2
+
+      - name: Библиотеки, фильтры и ядра VPN
+        if: steps.gv.outputs.skip != 'true'
+        run: bash tools/android-prepare.sh
+
+      - name: Ключ подписи
+        if: steps.gv.outputs.skip != 'true'
+        env:
+          KS: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          if [ -n "$KS" ]; then
+            echo "$KS" | base64 -d > "$RUNNER_TEMP/netloom.jks"
+            echo "NETLOOM_KEYSTORE=$RUNNER_TEMP/netloom.jks" >> "$GITHUB_ENV"
+            echo "NETLOOM_KEYSTORE_PASSWORD=$KS_PASS" >> "$GITHUB_ENV"
+            echo "NETLOOM_KEY_ALIAS=${KS_ALIAS:-netloom}" >> "$GITHUB_ENV"
+            echo "Подпись: секретный ключ репозитория"
+          else
+            echo "Подпись: открытый ключ из android/signing"
+          fi
+
+      - name: Сборка
+        if: steps.gv.outputs.skip != 'true'
+        run: |
+          gradle -p android --no-daemon --stacktrace assembleRelease \
+            -PgeckoviewVersion="${{ steps.gv.outputs.version }}" \
+            -PcompileSdkLevel="${{ steps.gv.outputs.sdk }}"
+          VER="$(cat VERSION)"
+          mkdir -p dist
+          cp android/app/build/outputs/apk/release/app-release.apk "dist/NetLoom-$VER-android-arm64.apk"
+          BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          "$BT/apksigner" verify --print-certs "dist/NetLoom-$VER-android-arm64.apk" | head -3
+          "$BT/aapt2" dump badging "dist/NetLoom-$VER-android-arm64.apk" | grep -E "^package|sdkVersion|native-code" || true
+          ls -la dist
+
+      - name: Публикация
+        if: steps.gv.outputs.skip != 'true'
+        run: |
+          VER="$(cat VERSION)"; TAG="${{ steps.gv.outputs.tag }}"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --draft --title "NetLoom $VER" --notes "Сборка идёт — файлы появятся здесь."
+          fi
+          gh release upload "$TAG" --clobber \
+            "dist/NetLoom-$VER-android-arm64.apk#Android — телефоны с 64-битным процессором (движок ${{ steps.gv.outputs.version }})"
+          bash tools/release-finish.sh "$TAG"

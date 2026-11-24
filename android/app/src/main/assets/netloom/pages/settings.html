@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Настройки</title>
+  <link rel="stylesheet" href="page.css">
+</head>
+<body>
+  <h1>Настройки</h1>
+
+  <h2 id="vpn">VPN</h2>
+  <div class="card">
+    <div class="row">
+      <div class="grow">
+        <div>VPN</div>
+        <div class="sub"><span class="status"><span class="dot" id="vpnDot"></span><span id="vpnStatus">Выключен</span></span></div>
+      </div>
+      <label class="switch"><input type="checkbox" id="vpnOn"><span></span></label>
+    </div>
+    <div id="servers"></div>
+    <div class="actions">
+      <button id="ping">Проверить скорость</button>
+    </div>
+  </div>
+
+  <h2>Добавить сервер или подписку</h2>
+  <div class="card">
+    <div class="row"><div class="grow">
+      <textarea id="addText" placeholder="vless://…, vmess://…, trojan://…, ss://…, hysteria2://…, tuic://…, wireguard://…, socks5://…, или адрес подписки https://…"></textarea>
+    </div></div>
+    <div class="actions"><button class="primary" id="add">Добавить</button><button id="paste">Вставить</button></div>
+    <div class="msg" id="addMsg"></div>
+  </div>
+
+  <div id="subsBlock" class="hidden">
+    <h2>Подписки</h2>
+    <div class="card" id="subs"></div>
+  </div>
+
+  <h2>Какие сайты через VPN</h2>
+  <div class="card">
+    <div class="row">
+      <div class="grow"><div>Российские сайты — напрямую</div><div class="sub">.ru, .рф, .su, Яндекс, ВКонтакте открываются без VPN</div></div>
+      <label class="switch"><input type="checkbox" id="ruDirect"><span></span></label>
+    </div>
+    <div id="rules"></div>
+    <div class="row">
+      <div class="grow"><input type="text" id="ruleHost" placeholder="сайт, например example.com" autocapitalize="off" autocorrect="off"></div>
+    </div>
+    <div class="actions">
+      <button id="ruleVpn">Через VPN</button><button id="ruleDirect">Напрямую</button>
+    </div>
+    <div class="msg" id="ruleMsg"></div>
+  </div>
+
+  <h2>Реклама</h2>
+  <div class="card">
+    <div class="row">
+      <div class="grow"><div>Блокировать рекламу и счётчики</div><div class="sub" id="filterStats"></div></div>
+      <label class="switch"><input type="checkbox" id="adblock"><span></span></label>
+    </div>
+    <div class="row"><div class="grow">
+      <div>Сайты без блокировки</div>
+      <div class="sub">Через пробел или с новой строки</div>
+      <textarea id="allowlist" placeholder="example.com"></textarea>
+    </div></div>
+    <div class="actions"><button id="saveAllow">Сохранить</button><button id="updateLists">Обновить базы</button></div>
+    <div class="msg" id="listMsg"></div>
+  </div>
+
+  <h2>Безопасность</h2>
+  <div class="card">
+    <div class="row">
+      <div class="grow"><div>Защита от опасных сайтов</div><div class="sub" id="secStats">Вирусы, фишинг и нежелательные программы. Проверка идёт на телефоне, без Google.</div></div>
+      <label class="switch"><input type="checkbox" id="security"><span></span></label>
+    </div>
+    <div class="row">
+      <div class="grow"><div>Строгая защита от отслеживания</div><div class="sub">Сайты видят меньше данных о телефоне. Некоторые сайты могут работать хуже.</div></div>
+      <label class="switch"><input type="checkbox" id="rfp"><span></span></label>
+    </div>
+    <div class="row">
+      <div class="grow"><div>Удалять куки и историю при выходе</div><div class="sub">После выхода из NetLoom придётся заново входить на сайты</div></div>
+      <label class="switch"><input type="checkbox" id="clearOnExit"><span></span></label>
+    </div>
+    <div class="actions"><button class="danger" id="clearNow">Удалить куки и историю сейчас</button></div>
+  </div>
+
+  <h2>Браузер</h2>
+  <div class="card">
+    <div class="row">
+      <div class="grow"><div>Поиск</div></div>
+      <select id="search" style="width:auto">
+        <option value="google">Google</option>
+        <option value="yandex">Яндекс</option>
+        <option value="duckduckgo">DuckDuckGo</option>
+      </select>
+    </div>
+    <div class="actions"><button id="makeDefault">Сделать браузером по умолчанию</button></div>
+  </div>
+
+  <h2>О программе</h2>
+  <div class="card">
+    <div class="row"><div class="grow"><div>NetLoom <span id="ver"></span></div><div class="sub" id="engine"></div></div></div>
+    <div class="row"><div class="grow small muted">Без аккаунтов и телеметрии. Исходный код: github.com/uproxe/NetLoom</div></div>
+  </div>
+
+  <script src="settings.js"></script>
+</body>
+</html>

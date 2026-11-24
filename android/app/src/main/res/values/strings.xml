@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">NetLoom</string>
+    <string name="url_hint">Поиск или адрес сайта</string>
+
+    <!-- окна сайтов -->
+    <string name="username">Имя пользователя</string>
+    <string name="password">Пароль</string>
+    <string name="clear_field">Очистить</string>
+    <string name="wait">Подождать</string>
+    <string name="stop">Остановить</string>
+    <string name="before_unload_title">Уйти со страницы?</string>
+    <string name="before_unload_message">Сайт предупреждает, что введённые данные могут не сохраниться.</string>
+    <string name="before_unload_leave_page">Уйти</string>
+    <string name="before_unload_stay">Остаться</string>
+    <string name="repost_confirm_title">Отправить ещё раз?</string>
+    <string name="repost_confirm_message">Чтобы показать страницу, NetLoom повторно отправит данные формы. Действие (например, заказ или оплата) может повториться.</string>
+    <string name="repost_confirm_resend">Отправить</string>
+    <string name="repost_confirm_cancel">Отмена</string>
+    <string name="folder_upload_title">Загрузить папку?</string>
+    <string name="folder_upload_message">Сайт получит все файлы из этой папки. Делайте так, только если доверяете сайту.</string>
+    <string name="folder_upload_confirm_accept">Загрузить</string>
+    <string name="folder_upload_confirm_cancel">Отмена</string>
+
+    <!-- разрешения -->
+    <string name="request_geolocation">Сообщить сайту %1$s, где вы находитесь?</string>
+    <string name="request_notification">Разрешить сайту %1$s присылать уведомления?</string>
+    <string name="request_storage">Разрешить сайту %1$s хранить данные на телефоне?</string>
+    <string name="request_storage_access">Разрешить сайту %1$s доступ к своим данным на других сайтах?</string>
+    <string name="request_media_key_system_access">Разрешить сайту %1$s воспроизводить защищённое видео?</string>
+    <string name="request_xr">Разрешить сайту %1$s доступ к очкам виртуальной реальности?</string>
+    <string name="request_video">Разрешить сайту %1$s доступ к камере?</string>
+    <string name="request_audio">Разрешить сайту %1$s доступ к микрофону?</string>
+    <string name="request_media">Разрешить сайту %1$s доступ к камере и микрофону?</string>
+    <string name="media_back_camera">Задняя камера</string>
+    <string name="media_front_camera">Передняя камера</string>
+    <string name="media_microphone">Микрофон</string>
+    <string name="media_other">Другое устройство</string>
+</resources>

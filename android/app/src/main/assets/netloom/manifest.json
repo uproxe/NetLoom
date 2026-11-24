@@ -1,0 +1,30 @@
+{
+  "manifest_version": 2,
+  "name": "NetLoom",
+  "version": "1.0.0",
+  "description": "Блокировка рекламы, защита от опасных сайтов и VPN браузера NetLoom",
+  "browser_specific_settings": {
+    "gecko": { "id": "netloom@uproxe" }
+  },
+  "permissions": [
+    "<all_urls>",
+    "proxy",
+    "webRequest",
+    "webRequestBlocking",
+    "webNavigation",
+    "tabs",
+    "storage",
+    "unlimitedStorage",
+    "nativeMessaging",
+    "nativeMessagingFromContent",
+    "geckoViewAddons",
+    "privacy",
+    "alarms"
+  ],
+  "background": {
+    "scripts": ["lib/filters.js", "lib/links.js", "main.js"],
+    "persistent": true
+  },
+  "web_accessible_resources": ["pages/blocked.html", "pages/blocked.js", "pages/page.css"],
+  "incognito": "spanning"
+}

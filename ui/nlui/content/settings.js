@@ -85,7 +85,23 @@ $("makeDefault").addEventListener("click", async () => {
     await lazy.ShellService.setDefaultBrowser(false);
     setTimeout(renderGeneral, 1500);
   } catch (e) {
-    $("defaultHint").textContent = "Не получилось. Откройте «Параметры Windows → Приложения по умолчанию» и выберите NetLoom.";
+    if (Services.appinfo.OS === "WINNT") {
+      // откроем системные настройки: там NetLoom можно выбрать браузером по умолчанию
+      try {
+        const exe = Services.dirsvc.get("WinD", Ci.nsIFile);
+        exe.append("explorer.exe");
+        const proc = Cc["@mozilla.org/process/util;1"].createInstance(Ci.nsIProcess);
+        proc.init(exe);
+        proc.run(false, ["ms-settings:defaultapps?registeredAppUser=NetLoom"], 1);
+        $("defaultHint").textContent = "В открывшемся окне Windows выберите NetLoom.";
+        return;
+      } catch (e2) { /* ниже — подсказка */ }
+      $("defaultHint").textContent = "Откройте «Параметры Windows → Приложения → Приложения по умолчанию» и выберите NetLoom.";
+    } else if (Services.appinfo.OS === "Darwin") {
+      $("defaultHint").textContent = "Откройте «Системные настройки → Рабочий стол и Dock → Веб-браузер по умолчанию» и выберите NetLoom.";
+    } else {
+      $("defaultHint").textContent = "Не получилось. Выберите NetLoom в настройках системы: «Приложения по умолчанию → Веб-браузер».";
+    }
   }
 });
 $("engine").addEventListener("change", async e => {
@@ -232,13 +248,27 @@ function showWizard() {
 document.querySelectorAll("[data-wizard]").forEach(b => b.addEventListener("click", showWizard));
 
 /** Закладки Яндекс Браузера (Chromium-формат) */
+/** Папки профилей Яндекс Браузера на Windows, macOS и Linux */
+function yandexUserDataDirs() {
+  const home = Services.dirsvc.get("Home", Ci.nsIFile).path;
+  switch (Services.appinfo.OS) {
+    case "WINNT":
+      return [PathUtils.join(Services.dirsvc.get("LocalAppData", Ci.nsIFile).path, "Yandex", "YandexBrowser", "User Data")];
+    case "Darwin":
+      return [PathUtils.join(home, "Library", "Application Support", "Yandex", "YandexBrowser")];
+    default:
+      return [PathUtils.join(home, ".config", "yandex-browser"), PathUtils.join(home, ".config", "yandex-browser-beta")];
+  }
+}
+
 async function importYandex() {
-  const local = Services.dirsvc.get("LocalAppData", Ci.nsIFile).path;
-  const userData = PathUtils.join(local, "Yandex", "YandexBrowser", "User Data");
   let file = null;
-  for (const name of ["Default", "Profile 1", "Profile 2"]) {
-    const p = PathUtils.join(userData, name, "Bookmarks");
-    if (await IOUtils.exists(p)) { file = p; break; }
+  for (const userData of yandexUserDataDirs()) {
+    for (const name of ["Default", "Profile 1", "Profile 2"]) {
+      const p = PathUtils.join(userData, name, "Bookmarks");
+      if (await IOUtils.exists(p)) { file = p; break; }
+    }
+    if (file) break;
   }
   if (!file) throw new Error("Яндекс Браузер не найден на этом компьютере");
   const data = await IOUtils.readJSON(file);

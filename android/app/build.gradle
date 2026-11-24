@@ -1,0 +1,72 @@
+// NetLoom для Android: свой интерфейс на движке GeckoView.
+// Версию движка передаёт сборка: -PgeckoviewVersion=… (по умолчанию — последняя из канала release).
+plugins {
+    id "com.android.application"
+}
+
+def geckoviewVersion = project.findProperty("geckoviewVersion") ?: "+"
+def appVersion = project.findProperty("appVersion") ?: file("../../VERSION").text.trim()
+def sdk = (project.findProperty("compileSdkLevel") ?: "36") as int
+def parts = appVersion.tokenize(".").collect { it as int }
+def code = parts[0] * 10000 + parts[1] * 100 + parts[2]
+
+android {
+    namespace "io.github.uproxe.netloom"
+    compileSdk sdk
+
+    defaultConfig {
+        applicationId "io.github.uproxe.netloom"
+        minSdk 26
+        targetSdk 34
+        versionCode code
+        versionName appVersion
+        buildConfigField "String", "GECKOVIEW_VERSION", "\"${geckoviewVersion}\""
+        ndk { abiFilters "arm64-v8a" }
+    }
+
+    signingConfigs {
+        release {
+            def ks = System.getenv("NETLOOM_KEYSTORE")
+            storeFile file(ks ?: "../signing/netloom.jks")
+            storePassword System.getenv("NETLOOM_KEYSTORE_PASSWORD") ?: "netloom-public"
+            keyAlias System.getenv("NETLOOM_KEY_ALIAS") ?: "netloom"
+            keyPassword System.getenv("NETLOOM_KEY_PASSWORD") ?: (System.getenv("NETLOOM_KEYSTORE_PASSWORD") ?: "netloom-public")
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    // ядра VPN — обычные программы под именем lib*.so: Android разрешает запускать их из папки библиотек
+    packaging {
+        jniLibs { useLegacyPackaging true }
+    }
+
+    androidResources {
+        ignoreAssetsPattern "!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~"
+        noCompress "ja"
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+}
+
+dependencies {
+    implementation "org.mozilla.geckoview:geckoview:${geckoviewVersion}"
+    implementation "androidx.annotation:annotation:1.9.1"
+}
