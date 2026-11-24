@@ -36,6 +36,14 @@ if [ ! -f "$TARBALL" ]; then
   mv "$TARBALL.part" "$TARBALL"
 fi
 curl -fsSL --retry 5 -o SHA512SUMS "$BASEURL/SHA512SUMS"
+# Одинаковая дата сборки (BuildID) для всех платформ одной версии: без этого
+# сборки macOS для Apple Silicon и Intel нельзя склеить в одну (Universal).
+if [ -z "${MOZ_BUILD_DATE:-}" ]; then
+  LM="$(curl -fsSI --retry 5 "$BASEURL/SHA512SUMS" | tr -d '\r' | sed -n 's/^[Ll]ast-[Mm]odified: //p' | head -1)"
+  MOZ_BUILD_DATE="$(date -u -d "${LM:-now}" +%Y%m%d%H%M%S)"
+  export MOZ_BUILD_DATE
+fi
+echo "    дата сборки (BuildID): $MOZ_BUILD_DATE"
 EXPECTED="$(awk -v f="source/$TARBALL" '$2 == f { print $1 }' SHA512SUMS)"
 [ -n "$EXPECTED" ] || { echo "Нет контрольной суммы для $TARBALL"; exit 1; }
 echo "$EXPECTED  $TARBALL" | sha512sum -c -
