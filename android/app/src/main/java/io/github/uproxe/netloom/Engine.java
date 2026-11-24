@@ -100,9 +100,9 @@ final class Engine implements WebExtension.MessageDelegate, WebExtension.PortDel
                         ContentBlocking.CookieBehavior.ACCEPT_FIRST_PARTY_AND_ISOLATE_OTHERS)
                     // проверка сайтов через Google выключена — свои списки во встроенном модуле
                     .safeBrowsing(ContentBlocking.SafeBrowsing.NONE)
-                    .cookieBannerHandlingMode(ContentBlocking.CookieBannerMode.COOKIE_BANNER_MODE_REJECT)
-                    .cookieBannerHandlingModePrivateBrowsing(
-                        ContentBlocking.CookieBannerMode.COOKIE_BANNER_MODE_REJECT)
+                    // окна про куки: отказаться (1 = «отклонить»)
+                    .cookieBannerHandlingMode(1)
+                    .cookieBannerHandlingModePrivateBrowsing(1)
                     .queryParameterStrippingEnabled(true)
                     .queryParameterStrippingPrivateBrowsingEnabled(true)
                     .build())
