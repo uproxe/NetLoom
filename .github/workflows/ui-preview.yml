@@ -13,7 +13,7 @@ on:
       - ".github/workflows/ui-preview.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   preview:
@@ -40,9 +40,26 @@ jobs:
       - name: Снимки
         run: bash tools/ui-preview.sh firefox preview
 
-      - uses: actions/upload-artifact@v4
+      - name: Снимки в ветку preview
         if: always()
-        with:
-          name: preview
-          path: preview/
-          retention-days: 7
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd preview
+          cat > README.md <<MD
+          # Снимки интерфейса NetLoom
+
+          Коммит: ${GITHUB_SHA}
+
+          ![окно](1-okno.png)
+          ![сайт](2-sait.png)
+          ![настройки](3-nastroiki.png)
+          ![настройки, низ](4-nastroiki-niz.png)
+          ![VPN](5-vpn.png)
+          ![новая вкладка](6-novaya-vkladka.png)
+          MD
+          git init -q
+          git checkout -q -b preview
+          git add -A
+          git -c user.name="uproxe" -c user.email="uproge@icloud.com" commit -q -m "Снимки интерфейса ${GITHUB_SHA::7}"
+          git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" preview

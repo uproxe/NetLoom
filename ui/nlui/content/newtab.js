@@ -7,7 +7,20 @@ ChromeUtils.defineESModuleGetters(lazy, {
   PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
 });
 const $ = id => document.getElementById(id);
-const topWin = () => window.browsingContext.topChromeWindow;
+const topWin = () => window.browsingContext?.topChromeWindow || null;
+const hasSearch = () => typeof Services !== "undefined" && !!Services.search;
+// запасной список, если страница открыта в отдельном процессе без доступа к поиску браузера
+const FALLBACK_ENGINES = [
+  { name: "Google", url: "https://www.google.com/search?q=" },
+  { name: "Яндекс", url: "https://yandex.ru/search/?text=" },
+];
+
+function navigate(url, where = "current") {
+  const w = topWin();
+  if (w?.openTrustedLinkIn) w.openTrustedLinkIn(url, where);
+  else if (where === "tab") window.open(url, "_blank");
+  else location.href = url;
+}
 
 function looksLikeAddress(s) {
   return /^[a-z][a-z0-9+.-]*:\/\//i.test(s) || /^(localhost|[\w-]+(\.[\w-]+)+|\d+\.\d+\.\d+\.\d+)(:\d+)?([/?#].*)?$/i.test(s);
@@ -19,16 +32,24 @@ async function go(text) {
   let url;
   if (looksLikeAddress(text)) {
     url = /^[a-z][a-z0-9+.-]*:\/\//i.test(text) ? text : "https://" + text;
-  } else {
+  } else if (hasSearch()) {
     const engine = Services.search.getEngineByName($("engine").value) || (await Services.search.getDefault());
     url = engine.getSubmission(text).uri.spec;
+  } else {
+    const e = FALLBACK_ENGINES.find(x => x.name === $("engine").value) || FALLBACK_ENGINES[0];
+    url = e.url + encodeURIComponent(text);
   }
-  topWin().openTrustedLinkIn(url, "current");
+  navigate(url);
 }
 
 async function init() {
-  const engines = await Services.search.getVisibleEngines();
-  const def = await Services.search.getDefault();
+  let engines = FALLBACK_ENGINES, def = FALLBACK_ENGINES[0];
+  if (hasSearch()) {
+    try {
+      engines = await Services.search.getVisibleEngines();
+      def = await Services.search.getDefault();
+    } catch (e) {}
+  }
   for (const e of engines) {
     const o = document.createElement("option");
     o.value = e.name;
@@ -47,7 +68,7 @@ async function init() {
       const a = document.createElement("a");
       a.className = "tile";
       a.href = b.uri;
-      a.addEventListener("click", ev => { ev.preventDefault(); topWin().openTrustedLinkIn(b.uri, ev.ctrlKey || ev.button === 1 ? "tab" : "current"); });
+      a.addEventListener("click", ev => { ev.preventDefault(); navigate(b.uri, ev.ctrlKey || ev.button === 1 ? "tab" : "current"); });
       const ico = document.createElement("span");
       ico.className = "ico";
       ico.setAttribute("aria-hidden", "true");

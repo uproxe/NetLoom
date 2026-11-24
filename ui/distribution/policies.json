@@ -20,13 +20,6 @@
     "SearchEngines": {
       "Add": [
         {
-          "Name": "Google",
-          "URLTemplate": "https://www.google.com/search?q={searchTerms}",
-          "Method": "GET",
-          "Alias": "@g",
-          "Description": "Google"
-        },
-        {
           "Name": "Яндекс",
           "URLTemplate": "https://yandex.ru/search/?text={searchTerms}",
           "Method": "GET",
