@@ -1,0 +1,2 @@
+# NetLoom — macOS Apple Silicon (arm64)
+ac_add_options --target=aarch64-apple-darwin

@@ -42,6 +42,21 @@ def save_ico(rel: str, sizes, private: bool = False):
     imgs[-1].save(p, format="ICO", sizes=[(s, s) for s in sizes], append_images=imgs[:-1], bitmap_format="bmp")
 
 
+def save_icns(rel: str, private: bool = False):
+    """Значок macOS (.icns) из PNG-частей — формат, который понимает macOS 10.7+."""
+    parts = [(b"icp4", 16), (b"icp5", 32), (b"ic07", 128), (b"ic08", 256), (b"ic09", 512),
+             (b"ic10", 1024), (b"ic11", 32), (b"ic12", 64), (b"ic13", 256), (b"ic14", 512)]
+    body = b""
+    for kind, size in parts:
+        buf = io.BytesIO()
+        icon(size, private).save(buf, format="PNG")
+        data = buf.getvalue()
+        body += kind + (len(data) + 8).to_bytes(4, "big") + data
+    p = OUT / rel
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_bytes(b"icns" + (len(body) + 8).to_bytes(4, "big") + body)
+
+
 def canvas(w: int, h: int, logo: int, private: bool = False) -> Image.Image:
     im = Image.new("RGBA", (w, h), BG + (255,))
     ic = icon(logo, private)
@@ -50,9 +65,7 @@ def canvas(w: int, h: int, logo: int, private: bool = False) -> Image.Image:
 
 
 def main():
-    if OUT.exists():
-        shutil.rmtree(OUT)
-    OUT.mkdir(parents=True)
+    OUT.mkdir(parents=True, exist_ok=True)
 
     for s in (16, 22, 24, 32, 48, 64, 128, 256):
         save_png(f"default{s}.png", s)
@@ -84,7 +97,10 @@ def main():
     canvas(164, 314, 120).convert("RGB").save(OUT / "wizWatermark.bmp")
     (OUT / "stubinstaller").mkdir(exist_ok=True)
     canvas(1344, 822, 256).convert("RGB").save(OUT / "stubinstaller/bgstub.jpg", quality=90)
-    canvas(1440, 880, 256).save(OUT / "background.png")
+    # фон окна установки macOS (.dmg): значки программы и «Программы» рисует сама система
+    Image.new("RGBA", (1440, 880), BG + (255,)).save(OUT / "background.png")
+    for name in ("firefox.icns", "document.icns", "disk.icns"):
+        save_icns(name)
 
     msix = {
         "Document44x44.png": 44, "LargeTile.scale-200.png": 620, "MedTile.scale-200.png": 300,

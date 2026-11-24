@@ -1,18 +1,24 @@
 name: Движок
 
-# Собирает движок NetLoom (Gecko ESR) для Windows x64.
+# Собирает движок NetLoom (Gecko ESR) для Windows, Linux и macOS (Apple Silicon и Intel),
+# затем склеивает две сборки macOS в одну (Universal).
 # Раз в сутки проверяет, не вышла ли новая версия ESR (исправления безопасности),
-# и если вышла — собирает её. Готовый движок публикуется в релиз engine-<версия>.
+# и если вышла — собирает её. Каждая готовая платформа сразу появляется в релизе engine-<версия>.
+# Если платформа не уместилась в 6 часов GitHub, сборка сама продолжается в новом запуске (кэш сохраняется).
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Версия ESR, например 153.7.0 (пусто — последняя)"
+        description: "Версия ESR, например 153.8.0 (пусто — последняя)"
         required: false
         default: ""
+      platforms:
+        description: "Платформы через пробел"
+        required: false
+        default: "win64 linux64 mac-arm64 mac-x64"
       force:
-        description: "Собрать заново, даже если эта версия уже есть"
+        description: "Собрать заново, даже если эта платформа уже есть"
         type: boolean
         default: false
       attempt:
@@ -24,48 +30,84 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
-  group: engine
+  group: engine-${{ inputs.platforms || 'all' }}
   cancel-in-progress: false
+
+env:
+  GH_TOKEN: ${{ github.token }}
 
 jobs:
   check:
-    name: Проверка версии
+    name: Что собирать
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.v.outputs.version }}
-      build: ${{ steps.v.outputs.build }}
+      matrix: ${{ steps.v.outputs.matrix }}
+      any: ${{ steps.v.outputs.any }}
     steps:
       - uses: actions/checkout@v4
       - id: v
         env:
-          GH_TOKEN: ${{ github.token }}
           INPUT_VERSION: ${{ inputs.version }}
+          INPUT_PLATFORMS: ${{ inputs.platforms }}
           INPUT_FORCE: ${{ inputs.force }}
+          EVENT: ${{ github.event_name }}
         run: |
           V="$INPUT_VERSION"
           [ -n "$V" ] || V="$(bash engine/latest-version.sh)"
           echo "version=$V" >> "$GITHUB_OUTPUT"
-          if gh release view "engine-$V" >/dev/null 2>&1 && [ "$INPUT_FORCE" != "true" ]; then
-            echo "Движок $V уже собран"
-            echo "build=false" >> "$GITHUB_OUTPUT"
+          PLATFORMS="${INPUT_PLATFORMS:-win64 linux64 mac-arm64 mac-x64}"
+
+          # по расписанию не мешаем сборке, которая уже идёт
+          if [ "$EVENT" = "schedule" ]; then
+            BUSY="$(gh run list --workflow engine.yml --limit 30 --json databaseId,status \
+              --jq "[.[] | select(.databaseId != ${GITHUB_RUN_ID} and (.status == \"in_progress\" or .status == \"queued\" or .status == \"pending\" or .status == \"waiting\"))] | length")"
+            if [ "$BUSY" != "0" ]; then
+              echo "Уже идёт сборка движка — пропускаю"
+              echo 'matrix=[]' >> "$GITHUB_OUTPUT"; echo "any=false" >> "$GITHUB_OUTPUT"; exit 0
+            fi
+          fi
+
+          if ! gh release view "engine-$V" >/dev/null 2>&1; then
+            gh release create "engine-$V" --prerelease --title "Движок $V" \
+              --notes "Движок NetLoom на основе Gecko ESR $V. Служебный релиз: из него собирается браузер для Windows, Linux и macOS."
+          fi
+          ASSETS="$(gh release view "engine-$V" --json assets --jq '.assets[].name')"
+          TODO=()
+          for p in $PLATFORMS; do
+            if [ "$INPUT_FORCE" != "true" ] && grep -Eq "^netloom-engine-$V-$p\.(zip|tar\.[a-z0-9]+|dmg)$" <<<"$ASSETS"; then
+              echo "$p: уже собран"
+            else
+              echo "$p: нужна сборка"; TODO+=("$p")
+            fi
+          done
+          if [ ${#TODO[@]} -eq 0 ]; then
+            echo 'matrix=[]' >> "$GITHUB_OUTPUT"; echo "any=false" >> "$GITHUB_OUTPUT"
           else
-            echo "Нужна сборка движка $V"
-            echo "build=true" >> "$GITHUB_OUTPUT"
+            echo "matrix=$(printf '%s\n' "${TODO[@]}" | jq -R . | jq -cs .)" >> "$GITHUB_OUTPUT"
+            echo "any=true" >> "$GITHUB_OUTPUT"
           fi
 
   build:
-    name: Сборка движка ${{ needs.check.outputs.version }}
+    name: Движок ${{ needs.check.outputs.version }} — ${{ matrix.platform }}
     needs: check
-    if: needs.check.outputs.build == 'true'
+    if: needs.check.outputs.any == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: ${{ fromJSON(needs.check.outputs.matrix) }}
     env:
       SCCACHE_GHA_ENABLED: "true"
       CARGO_INCREMENTAL: "0"
       CARGO_TERM_COLOR: always
       MOZBUILD_STATE_PATH: /home/runner/.mozbuild
+      V: ${{ needs.check.outputs.version }}
+      P: ${{ matrix.platform }}
     steps:
       - name: Освободить место на диске
         uses: jlumbroso/free-disk-space@main
@@ -99,11 +141,19 @@ jobs:
             python3 python3-pip python3-venv unzip uuid-dev yasm zip zstd
           df -h /
 
-      - name: Кэш инструментов кросс-сборки
+      - name: Кэш инструментов Windows
+        if: matrix.platform == 'win64'
         uses: actions/cache@v4
         with:
           path: ~/win-cross
           key: win-cross-v1-${{ hashFiles('engine/ESR_MAJOR') }}
+
+      - name: Кэш инструментов macOS
+        if: startsWith(matrix.platform, 'mac-')
+        uses: actions/cache@v4
+        with:
+          path: ~/mac-cross
+          key: mac-cross-v1-${{ hashFiles('engine/ESR_MAJOR') }}
 
       - name: Сборка
         id: build
@@ -112,10 +162,10 @@ jobs:
           NETLOOM_BUILD_TIMEOUT: "310m"
         run: |
           set +e
-          bash engine/build.sh "${{ needs.check.outputs.version }}"
+          bash engine/build.sh "$P" "$V"
           code=$?
           if [ $code -eq 124 ]; then
-            echo "::warning::Сборка не уместилась в отведённое время — продолжу в следующем запуске (кэш сохранён)"
+            echo "::warning::$P не уместился в отведённое время — продолжу в новом запуске (кэш сохранён)"
             echo "unfinished=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -124,15 +174,13 @@ jobs:
       - name: Продолжить сборку в новом запуске
         if: steps.build.outputs.unfinished == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
-          V: ${{ needs.check.outputs.version }}
           ATTEMPT: ${{ inputs.attempt || '1' }}
         run: |
           if [ "$ATTEMPT" -ge 5 ]; then
-            echo "::error::Сборка не завершилась за 5 запусков"
+            echo "::error::$P не собрался за 5 запусков"
             exit 1
           fi
-          gh workflow run engine.yml --ref "${GITHUB_REF_NAME}" -f version="$V" -f force=true -f attempt=$((ATTEMPT + 1))
+          gh workflow run engine.yml --ref "${GITHUB_REF_NAME}" -f version="$V" -f platforms="$P" -f attempt=$((ATTEMPT + 1))
 
       - name: Место на диске после сборки
         if: always()
@@ -140,14 +188,41 @@ jobs:
 
       - name: Публикация
         if: steps.build.outputs.unfinished != 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          V: ${{ needs.check.outputs.version }}
         run: |
-          gh release delete "engine-$V" --yes --cleanup-tag 2>/dev/null || true
           shopt -s nullglob
-          FILES=(out/netloom-engine-*.zip out/*.xpi)
-          gh release create "engine-$V" "${FILES[@]}" \
-            --title "Движок $V" \
-            --notes "Движок NetLoom на основе Gecko ESR $V для Windows x64. Служебный релиз: из него собирается браузер." \
-            --prerelease
+          FILES=(out/netloom-engine-"$V"-"$P".*)
+          [ ${#FILES[@]} -gt 0 ] || { echo "нет файлов движка"; exit 1; }
+          gh release upload "engine-$V" "${FILES[@]}" --clobber
+
+  mac-universal:
+    name: Движок macOS Universal
+    needs: [check, build]
+    if: always() && needs.check.outputs.version != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      V: ${{ needs.check.outputs.version }}
+      MOZBUILD_STATE_PATH: /home/runner/.mozbuild
+    steps:
+      - uses: actions/checkout@v4
+      - name: Готовы ли обе сборки macOS
+        id: ready
+        run: |
+          ASSETS="$(gh release view "engine-$V" --json assets --jq '.assets[].name' 2>/dev/null || true)"
+          if grep -qx "netloom-engine-$V-mac-arm64.dmg" <<<"$ASSETS" && grep -qx "netloom-engine-$V-mac-x64.dmg" <<<"$ASSETS" \
+             && { [ "${{ inputs.force }}" = "true" ] || ! grep -qx "netloom-engine-$V-mac-universal.dmg" <<<"$ASSETS"; }; then
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Universal не нужен или ещё рано"
+            echo "go=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Системные пакеты
+        if: steps.ready.outputs.go == 'true'
+        run: sudo apt-get -o Acquire::Retries=3 update && sudo apt-get install -y python3-venv zstd
+      - name: Объединение
+        if: steps.ready.outputs.go == 'true'
+        run: |
+          mkdir -p dl
+          gh release download "engine-$V" --dir dl --pattern "netloom-engine-$V-mac-arm64.dmg" --pattern "netloom-engine-$V-mac-x64.dmg"
+          bash engine/unify-mac.sh "$V" "dl/netloom-engine-$V-mac-arm64.dmg" "dl/netloom-engine-$V-mac-x64.dmg"
+          gh release upload "engine-$V" "out/netloom-engine-$V-mac-universal.dmg" --clobber

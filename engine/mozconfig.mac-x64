@@ -1,0 +1,3 @@
+# NetLoom — macOS Intel (x86_64)
+ac_add_options --target=x86_64-apple-darwin
+ac_add_options --enable-rust-simd

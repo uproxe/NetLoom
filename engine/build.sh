@@ -1,24 +1,29 @@
 #!/usr/bin/env bash
-# NetLoom — сборка движка (Gecko ESR) для Windows x64.
-# Работает на Linux (Ubuntu): так же собирает Mozilla в своей инфраструктуре.
+# NetLoom — сборка движка (Gecko ESR) для одной платформы.
+# Всё собирается на Linux (Ubuntu), как у Mozilla: Windows и macOS — кросс-сборкой.
 #
-#   bash engine/build.sh [версия]      например: bash engine/build.sh 153.7.0
+#   bash engine/build.sh <платформа> [версия]
+#     платформа: win64 | linux64 | mac-arm64 | mac-x64
+#     версия:    например 153.8.0 (пусто — последняя ESR)
 #
-# Результат: out/netloom-engine-<версия>-win64.zip
+# Результат в out/:  netloom-engine-<версия>-<платформа>.(zip|tar.xz|dmg)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PLATFORM="${1:?укажите платформу: win64 | linux64 | mac-arm64 | mac-x64}"
+case "$PLATFORM" in win64|linux64|mac-arm64|mac-x64) ;; *) echo "Неизвестная платформа: $PLATFORM"; exit 2;; esac
 WORK="${NETLOOM_WORK:-$ROOT/work}"
 OUT="${NETLOOM_OUT:-$ROOT/out}"
 CROSS="$HOME/win-cross"
+MACCROSS="$HOME/mac-cross"
 L10N_BASE="$HOME/.mozbuild/l10n-central"
-VERSION="${1:-}"
+VERSION="${2:-}"
 [ -n "$VERSION" ] || VERSION="$(bash "$ROOT/engine/latest-version.sh")"
 
 step() { echo; echo "==> $*"; }
 
-step "Версия движка: $VERSION"
-mkdir -p "$WORK" "$OUT" "$CROSS"
+step "Движок $VERSION для $PLATFORM"
+mkdir -p "$WORK" "$OUT"
 SRC="$WORK/src"
 
 # ───────── 1. Исходники ─────────
@@ -49,7 +54,7 @@ for p in "$ROOT"/engine/patches/*.patch; do
   patch -d "$SRC" -p1 --forward --no-backup-if-mismatch < "$p"
 done
 shopt -u nullglob
-cp "$ROOT/engine/mozconfig" "$SRC/mozconfig"
+cat "$ROOT/engine/mozconfig.common" "$ROOT/engine/mozconfig.$PLATFORM" > "$SRC/mozconfig"
 
 # никакого Mozilla в свойствах файлов (exe/dll), папке профиля и реестре
 find "$SRC" -name module.ver -not -path '*/test*' -print0 | xargs -0 sed -i \
@@ -60,6 +65,15 @@ sed -i -e 's/"WIN32_MODULE_COMPANYNAME", "Mozilla Foundation"/"WIN32_MODULE_COMP
        -e 's/"WIN32_MODULE_TRADEMARKS", "Mozilla"/"WIN32_MODULE_TRADEMARKS", "NetLoom"/' "$SRC/config/create_rc.py"
 sed -i 's/imply_option("MOZ_APP_VENDOR", "Mozilla")/imply_option("MOZ_APP_VENDOR", "NetLoom")/' "$SRC/browser/moz.configure"
 grep -q 'imply_option("MOZ_APP_VENDOR", "NetLoom")' "$SRC/browser/moz.configure" || echo "::warning::не удалось сменить MOZ_APP_VENDOR"
+
+# macOS: значок программы берётся из firefox.icns (наш), а не из каталога Assets.car (чужой)
+python3 - "$SRC/browser/app/macbuild/Contents/Info.plist.in" <<'PY'
+import re, sys
+p = sys.argv[1]
+s = open(p, encoding="utf-8").read()
+s = re.sub(r"\s*<key>CFBundleIconName</key>\s*<string>AppIcon</string>", "", s)
+open(p, "w", encoding="utf-8").write(s)
+PY
 
 # ───────── 3. Русский язык ─────────
 step "3/7 Русская локализация"
@@ -80,33 +94,66 @@ mapfile -t EN_DIRS < <(find "$SRC" -type d -path '*/locales/en-US' -not -path '*
 python3 "$ROOT/tools/debrand.py" "${EN_DIRS[@]}" "$L10N_BASE/ru"
 
 # ───────── 4. Инструменты кросс-сборки ─────────
-step "4/7 Инструменты кросс-сборки (wine, Windows SDK)"
-if [ ! -x "$CROSS/wine/bin/wine" ]; then
-  curl -fL --retry 5 "https://firefox-ci-tc.services.mozilla.com/api/index/v1/task/gecko.cache.level-3.toolchains.v3.linux64-wine.latest/artifacts/public/build/wine.tar.zst" \
-    | tar --zstd -x -C "$CROSS"
-fi
-VS_YAML="$(cd "$SRC" && ls build/vs/vs20*.yaml | grep -v aarch64 | sort | tail -1)"
-VS_STAMP="$CROSS/vs/.netloom-$(basename "$VS_YAML" .yaml)-$(sha256sum "$SRC/$VS_YAML" | cut -c1-12)"
-if [ ! -f "$VS_STAMP" ]; then
-  rm -rf "$CROSS/vs"
-  (cd "$SRC" && ./mach python --virtualenv build taskcluster/scripts/misc/get_vs.py "$VS_YAML" "$CROSS/vs")
-  touch "$VS_STAMP"
-fi
-chmod -R +x "$CROSS/vs" || true
+case "$PLATFORM" in
+win64)
+  step "4/7 Инструменты кросс-сборки (wine, Windows SDK)"
+  mkdir -p "$CROSS"
+  if [ ! -x "$CROSS/wine/bin/wine" ]; then
+    curl -fL --retry 5 "https://firefox-ci-tc.services.mozilla.com/api/index/v1/task/gecko.cache.level-3.toolchains.v3.linux64-wine.latest/artifacts/public/build/wine.tar.zst" \
+      | tar --zstd -x -C "$CROSS"
+  fi
+  VS_YAML="$(cd "$SRC" && ls build/vs/vs20*.yaml | grep -v aarch64 | sort | tail -1)"
+  VS_STAMP="$CROSS/vs/.netloom-$(basename "$VS_YAML" .yaml)-$(sha256sum "$SRC/$VS_YAML" | cut -c1-12)"
+  if [ ! -f "$VS_STAMP" ]; then
+    rm -rf "$CROSS/vs"
+    (cd "$SRC" && ./mach python --virtualenv build taskcluster/scripts/misc/get_vs.py "$VS_YAML" "$CROSS/vs")
+    touch "$VS_STAMP"
+  fi
+  chmod -R +x "$CROSS/vs" || true
+  ;;
+mac-*)
+  step "4/7 Инструменты кросс-сборки (cctools, dmg)"
+  if [ ! -x "$MACCROSS/cctools/bin/x86_64-apple-darwin-ld" ] || [ ! -x "$MACCROSS/dmg/dmg" ] || [ ! -x "$MACCROSS/hfsplus/newfs_hfs" ]; then
+    rm -rf "$MACCROSS"; mkdir -p "$MACCROSS"
+    (cd "$SRC" && ./mach artifact toolchain --from-build linux64-cctools-port linux64-libdmg linux64-hfsplus && mv cctools dmg hfsplus "$MACCROSS/")
+  fi
+  ls "$MACCROSS/cctools/bin" | head -3
+  ;;
+*)
+  step "4/7 Кросс-инструменты не нужны"
+  ;;
+esac
 
 # ───────── 5. Подготовка ─────────
 step "5/7 Подготовка системы сборки"
 cd "$SRC"
 ./mach --no-interactive bootstrap --application-choice browser
-if command -v rustup >/dev/null 2>&1; then rustup target add x86_64-pc-windows-msvc; fi
+case "$PLATFORM" in
+  win64)     RUST_TARGET=x86_64-pc-windows-msvc ;;
+  mac-arm64) RUST_TARGET=aarch64-apple-darwin ;;
+  mac-x64)   RUST_TARGET=x86_64-apple-darwin ;;
+  *)         RUST_TARGET= ;;
+esac
+if [ -n "$RUST_TARGET" ] && command -v rustup >/dev/null 2>&1; then rustup target add "$RUST_TARGET"; fi
 
 {
   echo
   echo "# добавлено engine/build.sh"
-  REDIST="$(ls -d "$CROSS"/vs/VC/Redist/MSVC/14.*/x64/Microsoft.VC*.CRT 2>/dev/null | sort -V | tail -1 || true)"
-  [ -n "$REDIST" ] && echo "export WIN32_REDIST_DIR=\"$REDIST\""
-  CLANG_LIB="$(ls -d "$HOME"/.mozbuild/clang/lib/clang/*/lib/windows 2>/dev/null | tail -1 || true)"
-  [ -n "$CLANG_LIB" ] && echo "export LIB=\"$CLANG_LIB\""
+  case "$PLATFORM" in
+  win64)
+    REDIST="$(ls -d "$CROSS"/vs/VC/Redist/MSVC/14.*/x64/Microsoft.VC*.CRT 2>/dev/null | sort -V | tail -1 || true)"
+    [ -n "$REDIST" ] && echo "export WIN32_REDIST_DIR=\"$REDIST\""
+    CLANG_LIB="$(ls -d "$HOME"/.mozbuild/clang/lib/clang/*/lib/windows 2>/dev/null | tail -1 || true)"
+    [ -n "$CLANG_LIB" ] && echo "export LIB=\"$CLANG_LIB\""
+    ;;
+  mac-*)
+    echo "mk_add_options \"export PATH=$MACCROSS/cctools/bin:\$PATH\""
+    echo "mk_add_options \"export LD_LIBRARY_PATH=$HOME/.mozbuild/clang/lib\""
+    echo "export MKFSHFS=$MACCROSS/hfsplus/newfs_hfs"
+    echo "export DMG_TOOL=$MACCROSS/dmg/dmg"
+    echo "export HFS_TOOL=$MACCROSS/dmg/hfsplus"
+    ;;
+  esac
 } >> "$SRC/mozconfig"
 echo "    mozconfig:"; sed 's/^/      /' "$SRC/mozconfig" | tail -8
 
@@ -130,9 +177,16 @@ else
   ./mach package
   ./mach build langpack-ru || true
 fi
-PKG="$(ls -t "$DIST"/netloom-*.win64.zip | head -1)"
-cp "$PKG" "$OUT/netloom-engine-${VERSION}-win64.zip"
-find "$DIST" -maxdepth 2 -name '*.langpack.xpi' -exec cp {} "$OUT/" \; || true
+case "$PLATFORM" in
+  win64)   PKG="$(ls -t "$DIST"/netloom-*.win64.zip | head -1)"; EXT=zip ;;
+  linux64) PKG="$(ls -t "$DIST"/netloom-*.linux-x86_64.tar.* | head -1)"; EXT="tar.${PKG##*.tar.}" ;;
+  mac-*)   PKG="$(ls -t "$DIST"/netloom-*.dmg | head -1)"; EXT=dmg ;;
+esac
+NAME="netloom-engine-${VERSION}-${PLATFORM}.${EXT}"
+cp "$PKG" "$OUT/$NAME"
+for x in "$DIST"/*.langpack.xpi "$DIST"/*/*.langpack.xpi; do
+  [ -f "$x" ] && cp "$x" "$OUT/netloom-engine-${VERSION}-${PLATFORM}.ru.langpack.xpi"
+done
 ls -la "$OUT"
 echo "$VERSION" > "$OUT/VERSION"
-step "Готово: $OUT/netloom-engine-${VERSION}-win64.zip"
+step "Готово: $OUT/$NAME"
