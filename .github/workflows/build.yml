@@ -62,7 +62,7 @@ jobs:
             esac
             found=""
             for e in $ENGINES; do
-              if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$e" --jq '.assets[].name' | grep -Eq "$want"; then found="$e"; break; fi
+              if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$e" --jq '.assets[].name' | grep -Eq -e "$want"; then found="$e"; break; fi
             done
             if [ -z "$found" ]; then echo "$p: движок ещё не собран"; echo "$p=" >> "$GITHUB_OUTPUT"; continue; fi
             ev="${found#engine-}"
