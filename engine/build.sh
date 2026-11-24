@@ -65,11 +65,12 @@ shopt -u nullglob
 cat "$ROOT/engine/mozconfig.common" "$ROOT/engine/mozconfig.$PLATFORM" > "$SRC/mozconfig"
 
 # никакого Mozilla в свойствах файлов (exe/dll), папке профиля и реестре
-find "$SRC" -name module.ver -not -path '*/test*' -print0 | xargs -0 sed -i \
+# LC_ALL=C: в module.ver знак © записан не в UTF-8, иначе sed заменил бы строку не целиком
+find "$SRC" -name module.ver -not -path '*/test*' -print0 | LC_ALL=C xargs -0 sed -i \
   -e 's/^WIN32_MODULE_COMPANYNAME=.*/WIN32_MODULE_COMPANYNAME=NetLoom/' \
   -e 's/^WIN32_MODULE_COPYRIGHT=.*/WIN32_MODULE_COPYRIGHT=NetLoom. MPL 2.0/' \
   -e 's/^WIN32_MODULE_TRADEMARKS=.*/WIN32_MODULE_TRADEMARKS=NetLoom/'
-sed -i -e 's/"WIN32_MODULE_COMPANYNAME", "Mozilla Foundation"/"WIN32_MODULE_COMPANYNAME", "NetLoom"/' \
+LC_ALL=C sed -i -e 's/"WIN32_MODULE_COMPANYNAME", "Mozilla Foundation"/"WIN32_MODULE_COMPANYNAME", "NetLoom"/' \
        -e 's/"WIN32_MODULE_TRADEMARKS", "Mozilla"/"WIN32_MODULE_TRADEMARKS", "NetLoom"/' "$SRC/config/create_rc.py"
 sed -i 's/imply_option("MOZ_APP_VENDOR", "Mozilla")/imply_option("MOZ_APP_VENDOR", "NetLoom")/' "$SRC/browser/moz.configure"
 grep -q 'imply_option("MOZ_APP_VENDOR", "NetLoom")' "$SRC/browser/moz.configure" || echo "::warning::не удалось сменить MOZ_APP_VENDOR"

@@ -47,6 +47,12 @@ jobs:
           Get-ItemProperty "HKCU:\Software\RegisteredApplications" | Select-Object NetLoom | Format-List
           if (-not (Test-Path "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\NetLoom.lnk")) { throw "нет ярлыка в меню Пуск" }
           (Get-Item "$dir\netloom.exe").VersionInfo | Format-List CompanyName, ProductName, FileDescription, LegalCopyright
+          # в свойствах файлов не должно быть чужих названий
+          $bad = Get-ChildItem $dir -Recurse -Include *.exe, *.dll | Where-Object {
+            $v = $_.VersionInfo; "$($v.CompanyName) $($v.ProductName) $($v.FileDescription) $($v.LegalCopyright) $($v.LegalTrademarks)" -match "Firefox|Mozilla"
+          } | Where-Object { $_.FullName -notmatch "\\cores\\" -and $_.Name -notmatch "^(msvcp|vcruntime|ucrtbase|api-ms)" }
+          $bad | ForEach-Object { "{0}: {1} / {2}" -f $_.Name, $_.VersionInfo.CompanyName, $_.VersionInfo.LegalCopyright }
+          if ($bad) { throw "в свойствах файлов есть Firefox или Mozilla" }
       - name: Запуск
         shell: pwsh
         run: |
