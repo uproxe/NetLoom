@@ -132,25 +132,23 @@ jobs:
     name: macOS
     needs: prepare
     if: needs.prepare.outputs.mac != ''
-    runs-on: macos-latest
+    # образ для macOS собирается на Linux инструментами Mozilla (как у неё самой)
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
-      - name: Инструменты
-        run: brew install librsvg || true
       - name: Движок
         run: gh release download "${{ needs.prepare.outputs.mac }}" --dir engine-dl --pattern '*-mac-universal.dmg' --pattern '*-mac-arm64.ru.langpack.xpi'
       - name: Сборка
         run: bash tools/package.sh mac "$(ls engine-dl/netloom-engine-*-mac-universal.dmg | head -1)" dist
-      - name: Проверка запуска
+      - name: Проверка образа
         run: |
-          VER="$(cat VERSION)"
-          MNT="$(mktemp -d)"
-          hdiutil attach -nobrowse -readonly -mountpoint "$MNT" "dist/NetLoom-$VER-macos-universal.dmg"
-          ls -la "$MNT"
-          codesign --verify --deep --strict "$MNT/NetLoom.app" && echo "подпись в порядке"
-          lipo -info "$MNT/NetLoom.app/Contents/MacOS/netloom"
-          hdiutil detach "$MNT"
+          VER="$(cat VERSION)"; MT="$HOME/mac-tools"
+          "$MT/dmg/dmg" extract "dist/NetLoom-$VER-macos-universal.dmg" check.hfs >/dev/null
+          mkdir check && "$MT/dmg/hfsplus" check.hfs extractall / check
+          ls -la check check/NetLoom.app/Contents/MacOS | head -20
+          "$MT/cctools/bin/x86_64-apple-darwin-lipo" -info check/NetLoom.app/Contents/MacOS/netloom
+          "$MT/rcodesign" print-signature-info check/NetLoom.app/Contents/MacOS/netloom | grep -iE "flags|identifier|cdhash" | head -5 || true
       - name: Публикация
         run: |
           VER="$(cat VERSION)"; EV="$(cat dist/ENGINE_VERSION)"

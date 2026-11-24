@@ -48,31 +48,41 @@ jobs:
           sudo dpkg -i --force-depends dist/*.deb && ls -la /usr/bin/netloom /usr/share/applications/netloom.desktop && sudo dpkg -r netloom
 
   mac:
-    name: macOS
-    runs-on: macos-latest
+    name: macOS (упаковка на Linux)
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - run: brew install librsvg || true
       - name: Упаковка
         run: |
+          MT="$HOME/mac-tools"; mkdir -p "$MT"
+          TC="https://firefox-ci-tc.services.mozilla.com/api/index/v1/task/gecko.cache.level-3.toolchains.v3"
+          curl -fsSL "$TC.linux64-libdmg.latest/artifacts/public/build/dmg.tar.zst" | tar --zstd -x -C "$MT"
+          curl -fsSL "$TC.linux64-hfsplus.latest/artifacts/public/build/hfsplus.tar.zst" | tar --zstd -x -C "$MT"
+          # поддельный движок: вместо netloom — настоящая программа для macOS (ядро Xray), чтобы проверить подпись
+          gh release download -R XTLS/Xray-core --pattern 'Xray-macos-arm64-v8a.zip' --dir xr
+          unzip -q xr/*.zip -d xr
           APP="fake/NetLoom.app/Contents"
           mkdir -p "$APP/MacOS" "$APP/Resources/browser"
-          cp /usr/bin/true "$APP/MacOS/netloom"
-          cat > "$APP/Info.plist" <<'PL'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0"><dict>
-            <key>CFBundleExecutable</key><string>netloom</string>
-            <key>CFBundleIdentifier</key><string>io.github.uproxe.netloom</string>
-            <key>CFBundleName</key><string>NetLoom</string>
-            <key>CFBundlePackageType</key><string>APPL</string>
-            <key>CFBundleIconFile</key><string>firefox.icns</string>
-          </dict></plist>
-          PL
-          hdiutil create -volname NetLoom -srcfolder fake -format UDZO netloom-engine-0.0.1-mac-universal.dmg
+          cp xr/xray "$APP/MacOS/netloom"
+          printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>' \
+            '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
+            '<plist version="1.0"><dict>' \
+            '<key>CFBundleExecutable</key><string>netloom</string>' \
+            '<key>CFBundleIdentifier</key><string>io.github.uproxe.netloom</string>' \
+            '<key>CFBundleName</key><string>NetLoom</string>' \
+            '<key>CFBundlePackageType</key><string>APPL</string>' \
+            '<key>CFBundleIconFile</key><string>firefox.icns</string>' \
+            '<key>CFBundleIconName</key><string>AppIcon</string>' \
+            '</dict></plist>' > "$APP/Info.plist"
+          dd if=/dev/zero of=fake.hfs bs=1M count=80 status=none
+          "$MT/hfsplus/newfs_hfs" -v NetLoom fake.hfs
+          "$MT/dmg/hfsplus" fake.hfs addall fake
+          "$MT/dmg/dmg" build fake.hfs netloom-engine-0.0.1-mac-universal.dmg >/dev/null
           bash tools/package.sh mac netloom-engine-0.0.1-mac-universal.dmg dist
-          MNT="$(mktemp -d)"; hdiutil attach -nobrowse -readonly -mountpoint "$MNT" dist/*.dmg
-          ls -la "$MNT" "$MNT/NetLoom.app/Contents/Resources" "$MNT/NetLoom.app/Contents/Resources/cores"/*
-          codesign --verify --deep --strict "$MNT/NetLoom.app" && echo "подпись в порядке"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleIconName" "$MNT/NetLoom.app/Contents/Info.plist" || true
-          hdiutil detach "$MNT"
+          # проверка результата
+          "$MT/dmg/dmg" extract dist/*.dmg out.hfs >/dev/null
+          mkdir out && "$MT/dmg/hfsplus" out.hfs extractall / out
+          ls -la out out/NetLoom.app/Contents out/NetLoom.app/Contents/Resources out/NetLoom.app/Contents/Resources/cores/*
+          ls -la out/NetLoom.app/Contents/_CodeSignature
+          "$HOME/mac-tools/rcodesign" print-signature-info out/NetLoom.app/Contents/MacOS/netloom | head -20
+          python3 -c "import plistlib; d=plistlib.load(open('out/NetLoom.app/Contents/Info.plist','rb')); print(d.get('CFBundleIconFile'), d.get('CFBundleIconName'))"

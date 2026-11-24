@@ -4,7 +4,7 @@
 #   bash tools/package.sh <платформа> <файл движка> [папка результата]
 #     win64    (на Linux)  → NetLoom-<v>-windows-x64-setup.exe и NetLoom-<v>-windows-x64.zip
 #     linux64  (на Linux)  → netloom_<v>_amd64.deb
-#     mac      (на macOS)  → NetLoom-<v>-macos-universal.dmg
+#     mac      (на Linux или macOS) → NetLoom-<v>-macos-universal.dmg
 #
 # Скрипт совместим со старым bash 3.2 из macOS.
 set -euo pipefail
@@ -33,11 +33,50 @@ linux64)
   [ -x "$APP/netloom" ] || { echo "В архиве движка нет netloom/netloom"; exit 1; }
   ;;
 mac)
-  MNT="$STAGE/mnt"; mkdir -p "$MNT"
-  hdiutil attach -nobrowse -readonly -noautoopen -mountpoint "$MNT" "$ENGINE" >/dev/null
-  BUNDLE="$(cd "$MNT" && ls -d *.app | head -1)"
-  cp -R "$MNT/$BUNDLE" "$STAGE/NetLoom.app"
-  hdiutil detach "$MNT" >/dev/null
+  if [ "$(uname)" = Darwin ]; then
+    MNT="$STAGE/mnt"; mkdir -p "$MNT"
+    hdiutil attach -nobrowse -readonly -noautoopen -mountpoint "$MNT" "$ENGINE" >/dev/null
+    BUNDLE="$(cd "$MNT" && ls -d *.app | head -1)"
+    cp -R "$MNT/$BUNDLE" "$STAGE/NetLoom.app"
+    hdiutil detach "$MNT" >/dev/null
+    LIPO=lipo
+  else
+    # на Linux — инструменты Mozilla для образов macOS (как в её собственной сборке) и rcodesign для подписи
+    MT="${NETLOOM_MAC_TOOLS:-$HOME/mac-tools}"
+    TC="https://firefox-ci-tc.services.mozilla.com/api/index/v1/task/gecko.cache.level-3.toolchains.v3"
+    mkdir -p "$MT"
+    [ -x "$MT/dmg/dmg" ] || curl -fsSL --retry 5 "$TC.linux64-libdmg.latest/artifacts/public/build/dmg.tar.zst" | tar --zstd -x -C "$MT"
+    [ -x "$MT/hfsplus/newfs_hfs" ] || curl -fsSL --retry 5 "$TC.linux64-hfsplus.latest/artifacts/public/build/hfsplus.tar.zst" | tar --zstd -x -C "$MT"
+    [ -x "$MT/cctools/bin/x86_64-apple-darwin-lipo" ] || curl -fsSL --retry 5 "$TC.linux64-cctools-port.latest/artifacts/public/build/cctools.tar.zst" | tar --zstd -x -C "$MT"
+    if [ ! -x "$MT/rcodesign" ]; then
+      python3 - "$MT/rcodesign.tgz" <<'PY'
+import json, os, re, sys, urllib.request
+h = {"Accept": "application/vnd.github+json", "User-Agent": "NetLoom-build"}
+if os.environ.get("GH_TOKEN"):
+    h["Authorization"] = "Bearer " + os.environ["GH_TOKEN"]
+rels = json.load(urllib.request.urlopen(urllib.request.Request(
+    "https://api.github.com/repos/indygreg/apple-platform-rs/releases?per_page=50", headers=h)))
+for r in rels:
+    if r["tag_name"].startswith("apple-codesign/") and not r["prerelease"]:
+        a = next((a for a in r["assets"] if re.search(r"x86_64-unknown-linux-musl\.tar\.gz$", a["name"])), None)
+        if a:
+            open(sys.argv[1], "wb").write(urllib.request.urlopen(urllib.request.Request(a["browser_download_url"], headers={"User-Agent": "NetLoom-build"})).read())
+            print("rcodesign", r["tag_name"])
+            break
+else:
+    sys.exit("rcodesign не найден")
+PY
+      tar -xzf "$MT/rcodesign.tgz" -C "$MT" && mv "$MT"/apple-codesign-*/rcodesign "$MT/rcodesign" && rm -rf "$MT"/apple-codesign-* "$MT/rcodesign.tgz"
+    fi
+    "$MT/dmg/dmg" extract "$ENGINE" "$STAGE/engine.hfs" >/dev/null
+    mkdir -p "$STAGE/img"
+    "$MT/dmg/hfsplus" "$STAGE/engine.hfs" extractall / "$STAGE/img"
+    rm -f "$STAGE/engine.hfs"
+    BUNDLE="$(cd "$STAGE/img" && ls -d *.app | head -1)"
+    mv "$STAGE/img/$BUNDLE" "$STAGE/NetLoom.app"
+    rm -rf "$STAGE/img"
+    LIPO="$MT/cctools/bin/x86_64-apple-darwin-lipo"
+  fi
   APP="$STAGE/NetLoom.app"; RES="$APP/Contents/Resources"
   [ -f "$APP/Contents/MacOS/netloom" ] || { echo "В образе движка нет Contents/MacOS/netloom"; exit 1; }
   ;;
@@ -108,14 +147,14 @@ mac)
   get_xray 'Xray-macos-arm64-v8a\.zip' "$STAGE/xa"
   get_xray 'Xray-macos-64\.zip' "$STAGE/xi"
   cp "$STAGE/xa/geoip.dat" "$STAGE/xa/geosite.dat" "$CORES/xray/" 2>/dev/null || true
-  lipo -create "$STAGE/xa/xray" "$STAGE/xi/xray" -output "$CORES/xray/xray"
+  "$LIPO" -create "$STAGE/xa/xray" "$STAGE/xi/xray" -output "$CORES/xray/xray"
   get_singbox 'sing-box-[0-9.]+-darwin-arm64\.tar\.gz' "$STAGE/sa"
   get_singbox 'sing-box-[0-9.]+-darwin-amd64\.tar\.gz' "$STAGE/si"
-  lipo -create "$STAGE/sa/sing-box" "$STAGE/si/sing-box" -output "$CORES/sing-box/sing-box"
+  "$LIPO" -create "$STAGE/sa/sing-box" "$STAGE/si/sing-box" -output "$CORES/sing-box/sing-box"
   cp "$STAGE/xa/LICENSE" "$CORES/xray/" 2>/dev/null || true
   cp "$STAGE/sa/LICENSE" "$CORES/sing-box/" 2>/dev/null || true
   chmod 755 "$CORES/xray/xray" "$CORES/sing-box/sing-box"
-  lipo -info "$CORES/xray/xray" "$CORES/sing-box/sing-box"
+  "$LIPO" -info "$CORES/xray/xray" "$CORES/sing-box/sing-box"
   ;;
 esac
 echo "    Xray-core $XRAY_TAG, sing-box $SB_TAG"
@@ -194,9 +233,14 @@ linux64)
   ;;
 mac)
   step "macOS: значок, подпись и образ .dmg"
-  # каталог значков macOS (Assets.car) из нашего значка — если есть actool из Xcode
-  ICON="$STAGE/icon"; mkdir -p "$ICON/Assets.xcassets/AppIcon.appiconset" "$ICON/out"
-  python3 - "$ICON/Assets.xcassets/AppIcon.appiconset" <<'PY'
+  cp "$ROOT/engine/branding/firefox.icns" "$RES/firefox.icns"
+  cp "$ROOT/engine/branding/document.icns" "$RES/document.icns"
+  NAME="NetLoom-$VER-macos-universal.dmg"
+  rm -f "$OUT/$NAME"
+  if [ "$(uname)" = Darwin ]; then
+    # каталог значков macOS (Assets.car) из нашего значка
+    ICON="$STAGE/icon"; mkdir -p "$ICON/Assets.xcassets/AppIcon.appiconset" "$ICON/out"
+    python3 - "$ICON/Assets.xcassets/AppIcon.appiconset" <<'PY'
 import json, sys
 d = sys.argv[1]
 images = []
@@ -206,42 +250,57 @@ for pt in (16, 32, 128, 256, 512):
 json.dump({"images": images, "info": {"version": 1, "author": "xcode"}}, open(d + "/Contents.json", "w"), indent=1)
 json.dump({"info": {"version": 1, "author": "xcode"}}, open(d + "/../Contents.json", "w"))
 PY
-  for pt in 16 32 128 256 512; do
-    for scale in 1 2; do
-      px=$((pt * scale))
-      rsvg-convert -w $px -h $px "$ROOT/branding/$([ $px -le 24 ] && echo icon-small || echo icon).svg" \
-        -o "$ICON/Assets.xcassets/AppIcon.appiconset/icon_${pt}x${pt}@${scale}x.png" 2>/dev/null \
-      || sips -s format png -z $px $px "$ROOT/engine/branding/default256.png" \
-        --out "$ICON/Assets.xcassets/AppIcon.appiconset/icon_${pt}x${pt}@${scale}x.png" >/dev/null
+    for pt in 16 32 128 256 512; do
+      for scale in 1 2; do
+        px=$((pt * scale))
+        rsvg-convert -w $px -h $px "$ROOT/branding/$([ $px -le 24 ] && echo icon-small || echo icon).svg" \
+          -o "$ICON/Assets.xcassets/AppIcon.appiconset/icon_${pt}x${pt}@${scale}x.png"
+      done
     done
-  done
-  if xcrun actool --compile "$ICON/out" --platform macosx --minimum-deployment-target 10.15 \
-       --app-icon AppIcon --output-partial-info-plist "$ICON/partial.plist" \
-       "$ICON/Assets.xcassets" >/dev/null && [ -f "$ICON/out/Assets.car" ]; then
-    cp "$ICON/out/Assets.car" "$RES/Assets.car"
-    /usr/libexec/PlistBuddy -c "Delete :CFBundleIconName" "$APP/Contents/Info.plist" 2>/dev/null || true
-    /usr/libexec/PlistBuddy -c "Add :CFBundleIconName string AppIcon" "$APP/Contents/Info.plist"
-    echo "    значок: Assets.car из нашего значка"
+    if xcrun actool --compile "$ICON/out" --platform macosx --minimum-deployment-target 10.15 \
+         --app-icon AppIcon --output-partial-info-plist "$ICON/partial.plist" \
+         "$ICON/Assets.xcassets" >/dev/null && [ -f "$ICON/out/Assets.car" ]; then
+      cp "$ICON/out/Assets.car" "$RES/Assets.car"
+      /usr/libexec/PlistBuddy -c "Delete :CFBundleIconName" "$APP/Contents/Info.plist" 2>/dev/null || true
+      /usr/libexec/PlistBuddy -c "Add :CFBundleIconName string AppIcon" "$APP/Contents/Info.plist"
+    fi
+    # своя подпись без сертификата Apple (ad-hoc): без неё программа не запустится на Apple Silicon
+    xattr -cr "$APP"
+    codesign --force --deep --sign - --timestamp=none "$APP"
+    codesign --verify --deep --strict "$APP" && echo "    подпись в порядке"
+    DMGROOT="$STAGE/dmg"; mkdir -p "$DMGROOT"
+    mv "$APP" "$DMGROOT/NetLoom.app"
+    ln -s /Applications "$DMGROOT/ "
+    cp "$ROOT/tools/macos/README.txt" "$DMGROOT/README.txt"
+    hdiutil create -volname "NetLoom" -srcfolder "$DMGROOT" -fs HFS+ -format UDZO -imagekey zlib-level=9 -ov "$OUT/$NAME"
   else
+    # значок берётся из firefox.icns: чужой каталог Assets.car убираем
     rm -f "$RES/Assets.car"
-    /usr/libexec/PlistBuddy -c "Delete :CFBundleIconName" "$APP/Contents/Info.plist" 2>/dev/null || true
-    echo "    значок: firefox.icns (actool недоступен)"
+    python3 - "$APP/Contents/Info.plist" <<'PY'
+import plistlib, sys
+p = sys.argv[1]
+d = plistlib.load(open(p, "rb"))
+d.pop("CFBundleIconName", None)
+d["CFBundleIconFile"] = "firefox.icns"
+plistlib.dump(d, open(p, "wb"))
+PY
+    # своя подпись без сертификата Apple (ad-hoc): без неё программа не запустится на Apple Silicon
+    "$MT/rcodesign" sign "$APP" >/dev/null
+    "$MT/rcodesign" verify "$APP/Contents/MacOS/netloom" >/dev/null 2>&1 && echo "    подпись в порядке" || echo "    (проверка подписи rcodesign недоступна)"
+    DMGROOT="$STAGE/dmg"; mkdir -p "$DMGROOT"
+    mv "$APP" "$DMGROOT/NetLoom.app"
+    cp "$ROOT/tools/macos/README.txt" "$DMGROOT/README.txt"
+    chmod -R a+rX,a-st,u+w,go-w "$DMGROOT"
+    HFS="$STAGE/staged.hfs"
+    SIZE=$(( $(du -s -k "$DMGROOT" | cut -f1) / 1000 * 102 / 100 + 16 ))
+    dd if=/dev/zero of="$HFS" bs=1M count=$SIZE status=none
+    "$MT/hfsplus/newfs_hfs" -v NetLoom "$HFS"
+    "$MT/dmg/hfsplus" "$HFS" addall "$DMGROOT"
+    "$MT/dmg/hfsplus" "$HFS" symlink "/ " /Applications
+    "$MT/dmg/dmg" build "$HFS" "$OUT/$NAME" >/dev/null
+    rm -f "$HFS"
   fi
-  cp "$ROOT/engine/branding/firefox.icns" "$RES/firefox.icns"
-  cp "$ROOT/engine/branding/document.icns" "$RES/document.icns"
-
-  # своя подпись без сертификата Apple (ad-hoc): нужна, чтобы программа вообще запускалась на Apple Silicon
-  xattr -cr "$APP"
-  codesign --force --deep --sign - --timestamp=none "$APP"
-  codesign --verify --deep --strict "$APP" && echo "    подпись в порядке"
-
-  DMGROOT="$STAGE/dmg"; mkdir -p "$DMGROOT"
-  mv "$APP" "$DMGROOT/NetLoom.app"
-  ln -s /Applications "$DMGROOT/Программы"
-  cp "$ROOT/tools/macos/README.txt" "$DMGROOT/Как открыть.txt"
-  NAME="NetLoom-$VER-macos-universal.dmg"
-  rm -f "$OUT/$NAME"
-  hdiutil create -volname "NetLoom" -srcfolder "$DMGROOT" -fs HFS+ -format UDZO -imagekey zlib-level=9 -ov "$OUT/$NAME"
+  ls -la "$OUT/$NAME"
   ;;
 esac
 rm -rf "$STAGE"
