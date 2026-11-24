@@ -53,10 +53,11 @@ jobs:
 
           ![окно](1-okno.png)
           ![сайт](2-sait.png)
-          ![настройки](3-nastroiki.png)
-          ![настройки, низ](4-nastroiki-niz.png)
-          ![VPN](5-vpn.png)
-          ![новая вкладка](6-novaya-vkladka.png)
+          ![меню](3-menu.png)
+          ![VPN](4-vpn.png)
+          ![реклама](5-reklama.png)
+          ![настройки](6-nastroiki.png)
+          ![настройки, низ](7-nastroiki-niz.png)
           MD
           git init -q
           git checkout -q -b preview

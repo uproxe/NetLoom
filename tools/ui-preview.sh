@@ -29,16 +29,22 @@ shot 1-okno
 open_tab() { "$BIN" --profile "$PROFILE" -new-tab "$1" >/dev/null 2>&1; sleep 7; }
 open_tab "https://example.com/"
 shot 2-sait
-open_tab "chrome://netloom/content/settings.html"
-shot 3-nastroiki
-xdotool key --clearmodifiers End; sleep 1
-shot 4-nastroiki-niz
-open_tab "chrome://netloom/content/vpn.html"
-shot 5-vpn
-if [ -n "$WID" ]; then
-  xdotool key --window "$WID" --clearmodifiers ctrl+t; sleep 4
-  shot 6-novaya-vkladka
-fi
+# кнопки справа в панели адреса: меню (крайняя справа) и VPN
+xdotool mousemove 1347 68 click 1; sleep 2
+shot 3-menu
+xdotool key Escape; sleep 1
+xdotool mousemove 1296 68 click 1; sleep 3
+shot 4-vpn
+xdotool key Escape; sleep 1
+xdotool mousemove 1229 68 click 1; sleep 2
+shot 5-reklama
+xdotool key Escape; sleep 1
+# Настройки: меню → «Настройки» (вторая снизу)
+xdotool mousemove 1347 68 click 1; sleep 2
+xdotool key Up Up Return; sleep 5
+shot 6-nastroiki
+xdotool key --clearmodifiers End; sleep 2
+shot 7-nastroiki-niz
 pkill -f "$BIN" || true
 sleep 2
 echo "---- сообщения NetLoom и ошибки ----"
