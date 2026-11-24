@@ -64,10 +64,10 @@ jobs:
           done
           echo "Движок: $TAG"
           gh release download "$TAG" --pattern '*-linux64.tar.*' --dir engine-dl
-          mkdir engine && tar -xf engine-dl/netloom-engine-*-linux64.tar.* -C engine
+          mkdir -p "$RUNNER_TEMP/eng" && tar -xf engine-dl/netloom-engine-*-linux64.tar.* -C "$RUNNER_TEMP/eng"
       - name: Снимки интерфейса
         run: |
-          cp -a engine/netloom app
+          cp -a "$RUNNER_TEMP/eng/netloom" app
           bash tools/apply-ui.sh app
           bash tools/ui-preview.sh app out/desktop
       - name: Скорость
@@ -79,7 +79,7 @@ jobs:
             mkdir -p "/tmp/ui-$COMPARE" && git archive "$COMPARE" ui | tar -x -C "/tmp/ui-$COMPARE"
             VARIANTS+=("NetLoom-$COMPARE=/tmp/ui-$COMPARE/ui")
           fi
-          bash tools/perf.sh engine/netloom out/perf "${VARIANTS[@]}"
+          bash tools/perf.sh "$RUNNER_TEMP/eng/netloom" out/perf "${VARIANTS[@]}"
           rm -rf out/perf/app-* out/perf/profile-* out/perf/lists
       - uses: actions/upload-artifact@v4
         if: always()

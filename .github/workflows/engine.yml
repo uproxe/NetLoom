@@ -72,7 +72,7 @@ jobs:
           fi
 
           if ! gh release view "engine-$V" >/dev/null 2>&1; then
-            gh release create "engine-$V" --prerelease --title "Движок $V" \
+            gh release create "engine-$V" --prerelease --title "Служебное: движок $V (не для установки)" \
               --notes "Движок NetLoom на основе Gecko ESR $V. Служебный релиз: из него собирается браузер для Windows, Linux и macOS."
           fi
           ASSETS="$(gh release view "engine-$V" --json assets --jq '.assets[].name')"

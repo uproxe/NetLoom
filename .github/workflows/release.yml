@@ -255,3 +255,34 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: bash tools/release-finish.sh "${{ needs.prepare.outputs.tag }}"
+
+  tidy:
+    name: Уборка
+    needs: publish
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: write
+    steps:
+      - name: Старые и неудачные запуски
+        run: |
+          # остаются только удачные запуски нынешних процессов: «Движок», «Выпуск», «Проверка»
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs?per_page=100&status=completed" \
+            --jq '.workflow_runs[] | "\(.id)\t\(.name)\t\(.conclusion)"' |
+          while IFS=$'\t' read -r id name concl; do
+            case "$name" in Движок|Выпуск|Проверка) [ "$concl" = success ] && continue ;; esac
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/runs/$id" >/dev/null && echo "убран запуск $id: $name ($concl)"
+          done
+      - name: Служебные релизы движка
+        run: |
+          # движки — служебные файлы для сборки: помечаем и храним только два последних
+          n=0
+          for tag in $(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[] | select(.tag_name | startswith("engine-")) | .tag_name' | sort -V -r); do
+            n=$((n + 1))
+            if [ $n -le 2 ]; then
+              gh release edit "$tag" --prerelease --title "Служебное: движок ${tag#engine-} (не для установки)" >/dev/null
+            else
+              gh release delete "$tag" --yes --cleanup-tag && echo "убран старый движок $tag"
+            fi
+          done
