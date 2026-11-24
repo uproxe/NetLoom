@@ -76,6 +76,8 @@ jobs:
           # черновик: люди увидят релиз, когда в нём будут Windows, Linux и macOS
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             gh release create "$TAG" --draft --title "NetLoom $VER" --notes "Сборка идёт — файлы появятся здесь."
+          elif [ "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = "false" ] && [ -z "$PACKED" ]; then
+            gh release edit "$TAG" --draft=true   # пустой релиз не показываем
           fi
 
   windows:
