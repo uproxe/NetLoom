@@ -1,3 +1,4 @@
+html { background: var(--surface); }
 body { width: 380px; background: var(--surface); overflow-x: hidden; }
 .head { padding: 14px 16px 12px; border-bottom: 1px solid var(--border); }
 .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }

@@ -97,7 +97,7 @@ function render() {
 }
 
 function fitFrame() {
-  if (window.frameElement) window.frameElement.style.height = Math.min(620, document.documentElement.scrollHeight) + "px";
+  if (window.frameElement) window.frameElement.style.height = Math.min(620, Math.ceil(document.body.getBoundingClientRect().height)) + "px";
 }
 
 $("vpn").addEventListener("change", e => NetLoom.setVpn(e.target.checked));

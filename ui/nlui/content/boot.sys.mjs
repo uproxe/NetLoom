@@ -6,8 +6,53 @@
 import { NetLoom } from "chrome://netloom/content/NetLoomService.sys.mjs";
 
 const BROWSER_URL = "chrome://browser/content/browser.xhtml";
-export const NEWTAB_URL = "chrome://netloom/content/newtab.html";
-export const SETTINGS_URL = "chrome://netloom/content/settings.html";
+// адреса, которые видит пользователь
+export const NEWTAB_URL = "about:newtab";
+export const SETTINGS_URL = "about:settings";
+// где лежат страницы
+const PAGES = {
+  settings: "chrome://netloom/content/settings.html",
+  preferences: "chrome://netloom/content/settings.html",
+  newtab: "chrome://netloom/content/newtab.html",
+  home: "chrome://netloom/content/newtab.html",
+};
+
+/**
+ * Свои страницы about:settings, about:newtab… Работают в главном процессе
+ * (как родные настройки движка), поэтому им доступны все функции браузера.
+ */
+function registerAboutPages() {
+  const registrar = Components.manager.QueryInterface(Ci.nsIComponentRegistrar);
+  for (const [what, target] of Object.entries(PAGES)) {
+    const targetURI = Services.io.newURI(target);
+    const module = {
+      newChannel(uri, loadInfo) {
+        const channel = Services.io.newChannelFromURIWithLoadInfo(targetURI, loadInfo);
+        channel.originalURI = uri;
+        return channel;
+      },
+      getURIFlags() {
+        return Ci.nsIAboutModule.ALLOW_SCRIPT | Ci.nsIAboutModule.IS_SECURE_CHROME_UI | Ci.nsIAboutModule.HIDE_FROM_ABOUTABOUT;
+      },
+      getChromeURI() {
+        return targetURI;
+      },
+      QueryInterface: ChromeUtils.generateQI(["nsIAboutModule"]),
+    };
+    const factory = {
+      createInstance(iid) {
+        return module.QueryInterface(iid);
+      },
+      QueryInterface: ChromeUtils.generateQI(["nsIFactory"]),
+    };
+    try {
+      registrar.registerFactory(Services.uuid.generateUUID(), "NetLoom about:" + what,
+        "@mozilla.org/network/protocol/about;1?what=" + what, factory);
+    } catch (e) {
+      report("about:" + what, e);
+    }
+  }
+}
 
 function report(where, e) {
   Services.console.logStringMessage("NetLoom [" + where + "]: " + e + (e?.stack ? "\n" + e.stack : ""));
@@ -19,6 +64,7 @@ const Boot = {
   start() {
     if (this.started) return;
     this.started = true;
+    registerAboutPages();
     Services.obs.addObserver(this, "final-ui-startup");
     Services.obs.addObserver(this, "chrome-document-global-created");
     Services.obs.addObserver(this, "browser-delayed-startup-finished");
@@ -28,10 +74,6 @@ const Boot = {
     try {
       if (topic === "final-ui-startup") {
         NetLoom.init();
-        try {
-          const { AboutNewTab } = ChromeUtils.importESModule("resource:///modules/AboutNewTab.sys.mjs");
-          AboutNewTab.newTabURL = NEWTAB_URL;
-        } catch (e) { report("newtab", e); }
       } else if (topic === "chrome-document-global-created") {
         subject.addEventListener("DOMContentLoaded", () => this.onDocument(subject), { once: true });
       } else if (topic === "browser-delayed-startup-finished") {

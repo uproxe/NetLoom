@@ -202,25 +202,10 @@
   Services.obs.addObserver(observer, "netloom-blocked");
   gBrowser.tabContainer.addEventListener("TabSelect", updateShield);
 
-  // about:preferences и about:settings ведут на настройки NetLoom
-  const redirectListener = {
-    onLocationChange(browser, webProgress, request, location) {
-      if (!webProgress.isTopLevel) return;
-      if (/^about:(preferences|settings|options)/.test(location.spec)) {
-        browser.fixupAndLoadURIString(SETTINGS_URL, { triggeringPrincipal: system() });
-      }
-    },
-  };
-  gBrowser.addTabsProgressListener(redirectListener);
-
   window.addEventListener("unload", () => {
     Services.obs.removeObserver(observer, "netloom-state");
     Services.obs.removeObserver(observer, "netloom-blocked");
-    gBrowser.removeTabsProgressListener(redirectListener);
   }, { once: true });
-
-  // свои страницы не показывают адрес в строке
-  if (Array.isArray(window.gInitialPages)) window.gInitialPages.push(NEWTAB_URL);
 
   NetLoom.init().then(() => {
     updateVpn();
