@@ -1,7 +1,11 @@
 name: Сборка NetLoom
 
-# Собирает готовый браузер: последний движок + интерфейс + ядро VPN + фильтры.
+# Собирает готовый браузер для людей: движок + интерфейс + ядра VPN + фильтры.
+#   Windows — установщик .exe и архив .zip
+#   Linux   — пакет .deb
+#   macOS   — образ .dmg (Universal: Apple Silicon и Intel)
 # Запускается после каждой сборки движка, при изменениях интерфейса и вручную.
+# Android собирается отдельно (workflow «Android»), в тот же релиз.
 
 on:
   workflow_dispatch:
@@ -14,6 +18,9 @@ on:
       - "ui/**"
       - "tools/apply-ui.sh"
       - "tools/package.sh"
+      - "tools/windows/**"
+      - "tools/linux/**"
+      - "tools/macos/**"
       - "VERSION"
       - ".github/workflows/build.yml"
 
@@ -24,43 +31,139 @@ concurrency:
   group: package
   cancel-in-progress: true
 
+env:
+  GH_TOKEN: ${{ github.token }}
+
 jobs:
-  package:
-    name: Пакет для Windows
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    env:
-      GH_TOKEN: ${{ github.token }}
+  prepare:
+    name: Что собирать
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.p.outputs.tag }}
+      win64: ${{ steps.p.outputs.win64 }}
+      linux64: ${{ steps.p.outputs.linux64 }}
+      mac: ${{ steps.p.outputs.mac }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Готовый движок
-        id: engine
+      - id: p
+        env:
+          EVENT: ${{ github.event_name }}
         run: |
-          TAG="$(gh release list --limit 50 --json tagName --jq '[.[] | select(.tagName | startswith("engine-"))][0].tagName')"
-          if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
-            echo "::warning::Движок ещё не собран — пакет будет собран после сборки движка"
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            exit 0
+          VER="$(cat VERSION)"; TAG="v$VER"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          ENGINES="$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --paginate \
+            --jq '.[] | select(.tag_name | startswith("engine-")) | .tag_name' | sort -V -r)"
+          PACKED="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq '.assets[] | "\(.name)\t\(.label)"' 2>/dev/null || true)"
+          for p in win64 linux64 mac; do
+            case $p in
+              win64)   want='-win64\.zip$';         main="NetLoom-$VER-windows-x64-setup.exe" ;;
+              linux64) want='-linux64\.tar\.[a-z0-9]+$'; main="netloom_${VER}_amd64.deb" ;;
+              mac)     want='-mac-universal\.dmg$'; main="NetLoom-$VER-macos-universal.dmg" ;;
+            esac
+            found=""
+            for e in $ENGINES; do
+              if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$e" --jq '.assets[].name' | grep -Eq "$want"; then found="$e"; break; fi
+            done
+            if [ -z "$found" ]; then echo "$p: движок ещё не собран"; echo "$p=" >> "$GITHUB_OUTPUT"; continue; fi
+            ev="${found#engine-}"
+            label="$(awk -F'\t' -v n="$main" '$1 == n { print $2 }' <<<"$PACKED")"
+            if [ "$EVENT" = "workflow_run" ] && grep -q "движок $ev" <<<"$label"; then
+              echo "$p: уже собран на движке $ev"; echo "$p=" >> "$GITHUB_OUTPUT"
+            else
+              echo "$p: собираю на движке $ev"; echo "$p=$found" >> "$GITHUB_OUTPUT"
+            fi
+          done
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --title "NetLoom $VER" --notes "Сборка идёт — файлы появятся здесь." --latest
           fi
-          echo "Движок: $TAG"
-          mkdir -p engine-dl
-          gh release download "$TAG" --dir engine-dl
-          echo "ready=true" >> "$GITHUB_OUTPUT"
 
-      - name: Сборка пакета
-        if: steps.engine.outputs.ready == 'true'
-        run: bash tools/package.sh "$(ls engine-dl/netloom-engine-*.zip | head -1)" dist
-
+  windows:
+    name: Windows
+    needs: prepare
+    if: needs.prepare.outputs.win64 != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: NSIS
+        run: sudo apt-get -o Acquire::Retries=3 update && sudo apt-get install -y nsis zip unzip
+      - name: Движок
+        run: gh release download "${{ needs.prepare.outputs.win64 }}" --dir engine-dl --pattern '*-win64.zip' --pattern '*-win64.ru.langpack.xpi'
+      - name: Сборка
+        run: bash tools/package.sh win64 "$(ls engine-dl/netloom-engine-*-win64.zip | head -1)" dist
       - name: Публикация
-        if: steps.engine.outputs.ready == 'true'
+        run: |
+          VER="$(cat VERSION)"; EV="$(cat dist/ENGINE_VERSION)"
+          gh release upload "${{ needs.prepare.outputs.tag }}" --clobber \
+            "dist/NetLoom-$VER-windows-x64-setup.exe#Windows — установщик (движок $EV)" \
+            "dist/NetLoom-$VER-windows-x64.zip#Windows — без установки, архив (движок $EV)"
+
+  linux:
+    name: Linux
+    needs: prepare
+    if: needs.prepare.outputs.linux64 != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Движок
+        run: gh release download "${{ needs.prepare.outputs.linux64 }}" --dir engine-dl --pattern '*-linux64.tar.*' --pattern '*-linux64.ru.langpack.xpi'
+      - name: Сборка
+        run: bash tools/package.sh linux64 "$(ls engine-dl/netloom-engine-*-linux64.tar.* | head -1)" dist
+      - name: Проверка пакета
         run: |
           VER="$(cat VERSION)"
-          ENGINE="$(cat dist/ENGINE_VERSION)"
-          TAG="v$VER"
-          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
-          gh release create "$TAG" dist/NetLoom-*.zip \
-            --title "NetLoom $VER" \
-            --notes "Сборка от $(date -u +%Y-%m-%d). Движок: Gecko ESR $ENGINE. Распакуйте архив и запустите NetLoom/netloom.exe." \
-            --latest
+          dpkg-deb --info "dist/netloom_${VER}_amd64.deb"
+          sudo apt-get -o Acquire::Retries=3 update
+          sudo apt-get install -y "./dist/netloom_${VER}_amd64.deb"
+          ls -la /usr/bin/netloom /usr/lib/netloom | head
+          timeout 120 netloom --headless --screenshot /tmp/shot.png about:blank && ls -la /tmp/shot.png || echo '::warning::проверочный запуск не удался'
+          sudo apt-get remove -y netloom
+      - name: Публикация
+        run: |
+          VER="$(cat VERSION)"; EV="$(cat dist/ENGINE_VERSION)"
+          gh release upload "${{ needs.prepare.outputs.tag }}" --clobber \
+            "dist/netloom_${VER}_amd64.deb#Linux — пакет .deb для Ubuntu, Debian, Mint, elementary OS (движок $EV)"
+
+  mac:
+    name: macOS
+    needs: prepare
+    if: needs.prepare.outputs.mac != ''
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Инструменты
+        run: brew install librsvg || true
+      - name: Движок
+        run: gh release download "${{ needs.prepare.outputs.mac }}" --dir engine-dl --pattern '*-mac-universal.dmg' --pattern '*-mac-arm64.ru.langpack.xpi'
+      - name: Сборка
+        run: bash tools/package.sh mac "$(ls engine-dl/netloom-engine-*-mac-universal.dmg | head -1)" dist
+      - name: Проверка запуска
+        run: |
+          VER="$(cat VERSION)"
+          MNT="$(mktemp -d)"
+          hdiutil attach -nobrowse -readonly -mountpoint "$MNT" "dist/NetLoom-$VER-macos-universal.dmg"
+          ls -la "$MNT"
+          codesign --verify --deep --strict "$MNT/NetLoom.app" && echo "подпись в порядке"
+          lipo -info "$MNT/NetLoom.app/Contents/MacOS/netloom"
+          hdiutil detach "$MNT"
+      - name: Публикация
+        run: |
+          VER="$(cat VERSION)"; EV="$(cat dist/ENGINE_VERSION)"
+          gh release upload "${{ needs.prepare.outputs.tag }}" --clobber \
+            "dist/NetLoom-$VER-macos-universal.dmg#macOS — Apple Silicon и Intel (движок $EV)"
+
+  notes:
+    name: Описание релиза
+    needs: [prepare, windows, linux, mac]
+    if: always() && needs.prepare.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Описание
+        run: |
+          TAG="${{ needs.prepare.outputs.tag }}"
+          bash tools/release-notes.sh "$TAG" > notes.md
+          cat notes.md
+          gh release edit "$TAG" --notes-file notes.md

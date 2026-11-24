@@ -36,9 +36,10 @@ ac_add_options --allow-addon-sideload
 ac_add_options --with-l10n-base="$HOME/.mozbuild/l10n-central"
 
 # Кэш компиляции в GitHub Actions
+# (именно тот sccache, что поставил GitHub Actions: он умеет новое хранилище кэша GitHub)
 if test "$SCCACHE_GHA_ENABLED" = "true"; then
-  ac_add_options --with-ccache=sccache
-  mk_add_options 'export RUSTC_WRAPPER=sccache'
+  ac_add_options --with-ccache="${SCCACHE_PATH:-sccache}"
+  mk_add_options "export RUSTC_WRAPPER=${SCCACHE_PATH:-sccache}"
   mk_add_options 'export CCACHE_CPP2=yes'
 fi
 
