@@ -25,6 +25,9 @@
   --toolbar-field-focus-color: var(--nl-text) !important;
   --toolbar-field-border-color: var(--nl-border) !important;
   --toolbar-field-focus-border-color: var(--nl-accent) !important;
+  --toolbar-field-focus-background-color: var(--nl-field) !important;
+  --urlbar-box-focus-bgcolor: var(--nl-field) !important;
+  --urlbar-box-hover-bgcolor: var(--nl-field) !important;
   --tab-selected-bgcolor: var(--nl-surface) !important;
   --tab-selected-textcolor: #F3F4F6 !important;
   --tab-hover-background-color: rgba(255, 255, 255, 0.04) !important;
@@ -130,7 +133,8 @@
 }
 
 /* ───── адресная строка ───── */
-#urlbar-background {
+#urlbar-background,
+#urlbar .urlbar-background {
   border-radius: 8px !important;
   border: 1px solid var(--nl-border) !important;
   background-color: var(--nl-field) !important;
@@ -138,7 +142,10 @@
 }
 #urlbar[focused] > #urlbar-background,
 #urlbar[open] > #urlbar-background,
-#urlbar[breakout-extend] > #urlbar-background {
+#urlbar[breakout-extend] > #urlbar-background,
+#urlbar[focused] .urlbar-background,
+#urlbar[open] .urlbar-background,
+#urlbar[breakout-extend] .urlbar-background {
   background-color: var(--nl-field) !important;
   border-color: var(--nl-accent) !important;
   outline: none !important;
