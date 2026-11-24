@@ -1,0 +1,88 @@
+{
+  "policies": {
+    "DisableTelemetry": true,
+    "DisableFirefoxStudies": true,
+    "DisableFirefoxAccounts": true,
+    "DisablePocket": true,
+    "DisableFeedbackCommands": true,
+    "DisableDefaultBrowserAgent": true,
+    "DontCheckDefaultBrowser": true,
+    "NoDefaultBookmarks": true,
+    "OverrideFirstRunPage": "",
+    "OverridePostUpdatePage": "",
+    "BackgroundAppUpdate": false,
+    "PasswordManagerEnabled": true,
+    "OfferToSaveLogins": true,
+    "PrimaryPassword": true,
+    "AutofillCreditCardEnabled": false,
+    "AutofillAddressEnabled": false,
+    "SearchSuggestEnabled": false,
+    "SearchEngines": {
+      "Add": [
+        {
+          "Name": "Google",
+          "URLTemplate": "https://www.google.com/search?q={searchTerms}",
+          "Method": "GET",
+          "Alias": "@g",
+          "Description": "Google"
+        },
+        {
+          "Name": "Яндекс",
+          "URLTemplate": "https://yandex.ru/search/?text={searchTerms}",
+          "Method": "GET",
+          "Alias": "@y",
+          "Description": "Яндекс"
+        }
+      ],
+      "Default": "Google",
+      "Remove": [
+        "Bing",
+        "Amazon.com",
+        "eBay",
+        "Ecosia",
+        "Qwant",
+        "Perplexity"
+      ]
+    },
+    "FirefoxHome": {
+      "Search": true,
+      "TopSites": true,
+      "SponsoredTopSites": false,
+      "Highlights": false,
+      "Pocket": false,
+      "SponsoredPocket": false,
+      "Snippets": false,
+      "Locked": false
+    },
+    "FirefoxSuggest": {
+      "WebSuggestions": false,
+      "SponsoredSuggestions": false,
+      "ImproveSuggest": false,
+      "Locked": true
+    },
+    "UserMessaging": {
+      "ExtensionRecommendations": false,
+      "FeatureRecommendations": false,
+      "UrlbarInterventions": false,
+      "SkipOnboarding": true,
+      "MoreFromMozilla": false,
+      "Locked": true,
+      "FirefoxLabs": false
+    },
+    "EnableTrackingProtection": {
+      "Value": true,
+      "Cryptomining": true,
+      "Fingerprinting": true,
+      "EmailTracking": true,
+      "Locked": false
+    },
+    "Cookies": {
+      "Behavior": "reject-tracker-and-partition-foreign",
+      "Locked": false
+    },
+    "HttpsOnlyMode": "enabled",
+    "DisableAppUpdate": true,
+    "DisableSystemAddonUpdate": false,
+    "DisableProfileImport": false
+  }
+}

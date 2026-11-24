@@ -1,0 +1,230 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* NetLoom — внешний вид окна браузера: только вкладки, адресная строка и закладки */
+
+:root {
+  --nl-bg: #070B12;
+  --nl-surface: #111827;
+  --nl-field: #0B1220;
+  --nl-border: #1F2937;
+  --nl-text: #E5E7EB;
+  --nl-muted: #9CA3AF;
+  --nl-accent: #38BDF8;
+  --nl-accent-soft: #0C2230;
+  --nl-ok: #22C55E;
+  --nl-warn: #F59E0B;
+  --nl-err: #EF4444;
+
+  --toolbar-bgcolor: var(--nl-surface) !important;
+  --toolbar-color: var(--nl-text) !important;
+  --toolbar-field-background-color: var(--nl-field) !important;
+  --toolbar-field-focus-background-color: var(--nl-field) !important;
+  --toolbar-field-color: var(--nl-text) !important;
+  --toolbar-field-focus-color: var(--nl-text) !important;
+  --toolbar-field-border-color: var(--nl-border) !important;
+  --toolbar-field-focus-border-color: var(--nl-accent) !important;
+  --tab-selected-bgcolor: var(--nl-surface) !important;
+  --tab-selected-textcolor: #F3F4F6 !important;
+  --tab-hover-background-color: rgba(255, 255, 255, 0.04) !important;
+  --lwt-accent-color: var(--nl-bg) !important;
+  --lwt-text-color: var(--nl-muted) !important;
+  --toolbarbutton-icon-fill: #D1D5DB !important;
+  --toolbarseparator-color: var(--nl-border) !important;
+  --chrome-content-separator-color: var(--nl-border) !important;
+  --arrowpanel-background: var(--nl-surface) !important;
+  --arrowpanel-color: var(--nl-text) !important;
+  --arrowpanel-border-color: var(--nl-border) !important;
+  --panel-background: var(--nl-surface) !important;
+  --panel-color: var(--nl-text) !important;
+  --panel-border-color: var(--nl-border) !important;
+  --menu-background-color: var(--nl-surface) !important;
+  --menu-color: var(--nl-text) !important;
+  --menu-border-color: var(--nl-border) !important;
+  --menuitem-hover-background-color: #1F2937 !important;
+  --focus-outline-color: var(--nl-accent) !important;
+  --urlbarView-highlight-background: var(--nl-accent-soft) !important;
+  --urlbarView-highlight-color: #E0F2FE !important;
+  --urlbar-box-bgcolor: var(--nl-field) !important;
+  --button-primary-bgcolor: var(--nl-accent) !important;
+  --button-primary-color: #0B1220 !important;
+  color-scheme: dark;
+}
+
+/* ───── фон панелей ───── */
+#navigator-toolbox {
+  background-color: var(--nl-bg) !important;
+  border-bottom: 1px solid var(--nl-border) !important;
+}
+#TabsToolbar {
+  background-color: var(--nl-bg) !important;
+}
+#nav-bar,
+#PersonalToolbar {
+  background-color: var(--nl-surface) !important;
+  border: 0 !important;
+}
+#nav-bar {
+  padding-block: 4px !important;
+}
+
+/* ───── всё лишнее скрыто ───── */
+#PanelUI-button,
+#PanelUI-menu-button,
+#fxa-toolbar-menu-button,
+#firefox-view-button,
+#sidebar-button,
+#sidebar-main,
+#unified-extensions-button,
+#save-to-pocket-button,
+#alltabs-button,
+#library-button,
+#home-button,
+#nav-bar-overflow-button,
+#tracking-protection-icon-container,
+#urlbar-searchmode-switcher,
+#picture-in-picture-button,
+#pageActionButton,
+#reader-mode-button,
+#tabs-newtab-button ~ toolbarbutton,
+#TabsToolbar .titlebar-spacer[type="pre-tabs"],
+#TabsToolbar .titlebar-spacer[type="post-tabs"],
+#customizableui-special-spring1,
+#customizableui-special-spring2,
+#toolbar-menubar:not([inactive]) #menubar-items,
+#context-sendpagetodevice,
+#context-sendlinktodevice,
+#context-sendimage,
+#context-translate-selection,
+#context-ask-chat,
+#context-pocket,
+#context-savelinktopocket,
+#appMenu-fxa-status2,
+#toolbar-context-customize {
+  display: none !important;
+}
+
+/* ───── вкладки ───── */
+.tabbrowser-tab {
+  padding-inline: 1px !important;
+}
+.tab-background {
+  border-radius: 8px 8px 0 0 !important;
+  margin-block: 6px 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+.tabbrowser-tab[selected] .tab-background,
+.tabbrowser-tab[multiselected] .tab-background {
+  background: var(--nl-surface) !important;
+}
+.tabbrowser-tab:not([selected]) .tab-label {
+  color: var(--nl-muted) !important;
+}
+.tab-label {
+  font-size: 12.5px !important;
+}
+
+/* ───── адресная строка ───── */
+#urlbar-background {
+  border-radius: 8px !important;
+  border: 1px solid var(--nl-border) !important;
+  background-color: var(--nl-field) !important;
+  box-shadow: none !important;
+}
+#urlbar[focused] > #urlbar-background {
+  border-color: var(--nl-accent) !important;
+  outline: none !important;
+}
+#urlbar-input::placeholder {
+  color: var(--nl-muted) !important;
+}
+
+/* ───── панель закладок ───── */
+#PersonalToolbar {
+  min-height: 28px !important;
+  border-bottom: 1px solid var(--nl-border) !important;
+}
+#PersonalToolbar toolbarbutton.bookmark-item {
+  color: #D1D5DB !important;
+  border-radius: 5px !important;
+  padding: 2px 8px !important;
+}
+
+/* ───── кнопки NetLoom ───── */
+#netloom-tools {
+  display: flex !important;
+  align-items: center;
+  gap: 6px;
+  margin-inline: 4px 2px;
+}
+.netloom-btn {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  min-width: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #D1D5DB;
+  font: menu;
+  font-size: 12px;
+  cursor: default;
+}
+.netloom-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+.netloom-btn:focus-visible {
+  outline: 2px solid var(--nl-accent);
+  outline-offset: 1px;
+}
+.netloom-btn svg {
+  pointer-events: none;
+}
+#netloom-shield .count {
+  color: var(--nl-muted);
+  min-width: 10px;
+}
+#netloom-shield[off] svg {
+  opacity: 0.45;
+}
+#netloom-vpn {
+  height: 26px;
+  padding: 0 11px 0 9px;
+  border: 1px solid var(--nl-border);
+  border-radius: 13px;
+  font-weight: 500;
+}
+#netloom-vpn[status="connected"] {
+  border-color: #1E3A4A;
+  background: var(--nl-accent-soft);
+  color: #E0F2FE;
+}
+#netloom-vpn .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #4B5563;
+}
+#netloom-vpn[status="connected"] .dot { background: var(--nl-ok); }
+#netloom-vpn[status="connecting"] .dot { background: var(--nl-warn); }
+#netloom-vpn[status="error"] .dot { background: var(--nl-err); }
+
+#netloom-vpn-panel {
+  --arrowpanel-padding: 0;
+}
+#netloom-vpn-frame {
+  width: 380px;
+  height: 520px;
+  border: 0;
+  display: block;
+  background: var(--nl-surface);
+}
+
+menupopup.netloom-menu {
+  --menuitem-padding: 7px 12px;
+}

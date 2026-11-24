@@ -1,0 +1,30 @@
+[Adblock Plus 2.0]
+! Title: NetLoom — собственные правила
+! Дополнения к основным спискам: рекламные сети и счётчики рунета
+||an.yandex.ru^$third-party
+||yandexadexchange.net^
+||adfox.ru^$third-party
+||ads.adfox.ru^
+||adriver.ru^
+||mc.yandex.ru^$third-party
+||top-fwz1.mail.ru^
+||counter.yadro.ru^
+||tns-counter.ru^
+||mediametrics.ru^$third-party
+||relap.io^
+||smi2.ru^$third-party
+||smi2.net^
+||24smi.org^$third-party
+||lentainform.com^
+||mgid.com^
+||adnxs.com^
+||doubleclick.net^
+||googlesyndication.com^
+||googleadservices.com^
+||google-analytics.com^
+||googletagmanager.com^$third-party
+||scorecardresearch.com^
+||criteo.com^
+||criteo.net^
+||taboola.com^
+||outbrain.com^

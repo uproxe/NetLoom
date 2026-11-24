@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src chrome:; style-src chrome: 'unsafe-inline'">
+  <title>VPN</title>
+  <link rel="stylesheet" href="chrome://netloom/content/nl.css">
+  <link rel="stylesheet" href="chrome://netloom/content/vpn.css">
+</head>
+<body>
+  <header class="head">
+    <div class="row">
+      <span class="title">VPN</span>
+      <input type="checkbox" class="switch" id="vpn" aria-label="Включить VPN">
+    </div>
+    <div class="status"><span class="dot" id="dot"></span><span id="status"></span></div>
+  </header>
+
+  <section id="servers" class="servers"></section>
+
+  <section class="route">
+    <label class="check"><input type="checkbox" id="ruDirect"> <span>Российские сайты — напрямую</span></label>
+    <div id="siteBox">
+      <div class="muted" id="siteLabel"></div>
+      <div class="seg" role="radiogroup" aria-label="Маршрут для этого сайта">
+        <button role="radio" data-mode="auto">Как обычно</button>
+        <button role="radio" data-mode="vpn">Через VPN</button>
+        <button role="radio" data-mode="direct">Напрямую</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="add" id="addBox" hidden>
+    <textarea id="addText" rows="3" placeholder="vless://, vmess://, trojan://, ss://, socks5://, http://&#10;или ссылка на подписку https://…"></textarea>
+    <div class="row"><button class="btn primary" id="addBtn">Добавить</button><span class="muted" id="addResult"></span></div>
+  </section>
+
+  <footer class="foot">
+    <button class="btn outline" id="addToggle">+ Сервер или подписка</button>
+    <button class="btn" id="pingBtn">Пинг</button>
+    <a href="#" id="rulesLink">Правила сайтов</a>
+  </footer>
+  <script src="chrome://netloom/content/vpn.js"></script>
+</body>
+</html>

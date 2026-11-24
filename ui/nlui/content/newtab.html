@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src chrome:; style-src chrome: 'unsafe-inline'; img-src chrome: page-icon: cached-favicon: data:">
+  <title>Новая вкладка</title>
+  <link rel="stylesheet" href="chrome://netloom/content/nl.css">
+  <style>
+    body { min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 18vh 24px 40px; gap: 34px; }
+    .search { width: 100%; max-width: 620px; display: flex; align-items: center; gap: 10px; height: 48px; padding: 0 8px 0 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; color: var(--muted); }
+    .search:focus-within { border-color: var(--accent); }
+    .search input { flex: 1; border: 0; background: transparent; height: 44px; font-size: 15px; outline: none; color: var(--text); padding: 0; }
+    .search .engine { height: 32px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: #D1D5DB; font-size: 12px; }
+    .tiles { width: 100%; max-width: 620px; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 14px; }
+    .tile { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 4px; border-radius: 10px; color: #D1D5DB; text-decoration: none; font-size: 12px; min-width: 0; }
+    .tile:hover { background: rgba(255,255,255,.03); }
+    .tile .ico { width: 44px; height: 44px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-weight: 600; color: var(--text); overflow: hidden; }
+    .tile .ico img { width: 22px; height: 22px; }
+    .tile .t { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    @media (max-width: 560px) { .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  </style>
+</head>
+<body>
+  <form class="search" id="form" role="search">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+    <input id="q" type="text" placeholder="Поиск или адрес" aria-label="Поиск или адрес" autocomplete="off">
+    <select class="engine" id="engine" aria-label="Поисковая система"></select>
+  </form>
+  <nav class="tiles" id="tiles" aria-label="Закладки"></nav>
+  <script src="chrome://netloom/content/newtab.js"></script>
+</body>
+</html>

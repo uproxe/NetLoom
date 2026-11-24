@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src chrome:; style-src chrome: 'unsafe-inline'; img-src chrome: data:">
+  <title>Настройки</title>
+  <link rel="icon" href="chrome://branding/content/icon32.png">
+  <link rel="stylesheet" href="chrome://netloom/content/nl.css">
+  <link rel="stylesheet" href="chrome://netloom/content/settings.css">
+</head>
+<body>
+<main class="page">
+  <h1>Настройки</h1>
+
+  <section class="card" id="general">
+    <h2 class="label-caps">Основное</h2>
+    <div class="row">
+      <div class="grow">Браузер по умолчанию<div class="muted" id="defaultHint">Ссылки из других программ будут открываться здесь</div></div>
+      <button class="btn outline" id="makeDefault">Сделать основным</button>
+    </div>
+    <div class="row">
+      <label class="grow" for="engine">Поисковая система</label>
+      <select id="engine"></select>
+    </div>
+    <div class="row">
+      <label class="grow" for="startup">При запуске</label>
+      <select id="startup">
+        <option value="3">Открывать прошлые вкладки</option>
+        <option value="1">Новая вкладка</option>
+      </select>
+    </div>
+  </section>
+
+  <section class="card" id="privacy">
+    <h2 class="label-caps">Приватность и защита</h2>
+    <div class="row">
+      <div class="grow">Мастер-пароль<div class="muted">Сохранённые пароли зашифрованы и открываются только после ввода</div></div>
+      <span id="ppStatus" class="status-text"></span>
+      <button class="btn" id="ppChange">Изменить</button>
+    </div>
+    <label class="row">
+      <div class="grow">Блокировать рекламу и трекеры</div>
+      <input type="checkbox" class="switch" id="adblock">
+    </label>
+    <label class="row">
+      <div class="grow">Очищать cookies и данные сайтов при закрытии<div class="muted">Больше приватности, но на сайты придётся входить заново</div></div>
+      <input type="checkbox" class="switch" id="clearCookies">
+    </label>
+    <label class="row">
+      <div class="grow">Строгая защита от отпечатков<div class="muted">Сайтам сложнее узнать вас по устройству. Время на сайтах будет по UTC</div></div>
+      <input type="checkbox" class="switch" id="rfp">
+    </label>
+    <label class="row">
+      <div class="grow">Проверять сайты и загрузки на вирусы и фишинг</div>
+      <input type="checkbox" class="switch" id="safebrowsing">
+    </label>
+  </section>
+
+  <section class="card" id="vpn">
+    <h2 class="label-caps">VPN и прокси</h2>
+    <div class="sub-title">Серверы</div>
+    <div id="serverList" class="list"></div>
+    <div class="sub-title">Подписки</div>
+    <div id="subList" class="list"></div>
+    <textarea id="addText" rows="2" placeholder="Вставьте ссылки vless://, vmess://, trojan://, ss://, socks5://, http:// или ссылку на подписку https://…"></textarea>
+    <div class="row tight"><button class="btn primary" id="addBtn">Добавить</button><button class="btn" id="pingBtn">Проверить пинг</button><span class="muted" id="addResult"></span></div>
+
+    <label class="row check-row">
+      <input type="checkbox" id="ruDirect">
+      <span>Российские сайты — напрямую, без VPN</span>
+    </label>
+    <div class="sub-title">Правила для сайтов</div>
+    <div class="rules">
+      <div id="ruleList"></div>
+      <div class="rule-add">
+        <input type="text" id="ruleHost" placeholder="Адрес сайта, например example.com" aria-label="Адрес сайта для правила">
+        <select id="ruleMode" aria-label="Маршрут"><option value="vpn">Через VPN</option><option value="direct">Напрямую</option></select>
+        <button class="btn primary" id="ruleAdd">Добавить</button>
+      </div>
+    </div>
+    <div class="err" id="ruleErr"></div>
+  </section>
+
+  <section class="card" id="import">
+    <h2 class="label-caps">Импорт и экспорт</h2>
+    <div class="muted spaced">Перенести закладки, пароли и историю из другого браузера</div>
+    <div class="grid4">
+      <button class="btn big" id="impYandex">Яндекс Браузер</button>
+      <button class="btn big" data-wizard>Chrome</button>
+      <button class="btn big" data-wizard>Firefox</button>
+      <button class="btn big" data-wizard>Safari (из файла)</button>
+    </div>
+    <div class="muted spaced" id="impResult"></div>
+    <div class="row tight top-line">
+      <button class="btn" id="expBookmarks">Экспорт закладок (HTML)</button>
+      <button class="btn" id="expPasswords">Экспорт паролей (CSV)</button>
+    </div>
+  </section>
+
+  <section class="card" id="filters">
+    <h2 class="label-caps">Фильтры рекламы</h2>
+    <div class="row">
+      <div class="grow" id="filterStats"></div>
+      <button class="btn" id="listsUpdate">Обновить списки</button>
+    </div>
+    <div class="sub-title">Сайты без блокировки</div>
+    <div id="allowList" class="list"></div>
+  </section>
+
+  <section class="card" id="about">
+    <h2 class="label-caps">О программе</h2>
+    <div class="row">
+      <div class="grow">NetLoom <span id="version"></span><div class="muted">Движок обновляется только исправлениями безопасности. Дизайн и настройки при этом не меняются.</div></div>
+      <a href="https://github.com/uproxe/NetLoom" id="repoLink">GitHub</a>
+    </div>
+  </section>
+</main>
+<script src="chrome://netloom/content/settings.js"></script>
+</body>
+</html>
