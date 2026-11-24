@@ -4,7 +4,8 @@
 set -euo pipefail
 TAG="$1"
 REPO="${GITHUB_REPOSITORY:-uproxe/NetLoom}"
-ASSETS="$(gh api "repos/$REPO/releases/tags/$TAG" --jq '.assets[] | "\(.name)\t\(.label)\t\(.size)"')"
+# черновики не видны по адресу …/releases/tags/<тег>, поэтому ищем в общем списке
+ASSETS="$(gh api "repos/$REPO/releases?per_page=100" --jq ".[] | select(.tag_name == \"$TAG\") | .assets[] | \"\\(.name)\\t\\(.label)\\t\\(.size)\"")"
 has() { grep -Eq "^$1	" <<<"$ASSETS"; }
 size() { awk -F'\t' -v n="$1" '$1 == n { printf "%.0f МБ", $3 / 1048576 }' <<<"$ASSETS"; }
 engine() { awk -F'\t' -v n="$1" '$1 == n { if (match($2, /движок [0-9.]+/)) print substr($2, RSTART + 7, RLENGTH - 7) }' <<<"$ASSETS"; }

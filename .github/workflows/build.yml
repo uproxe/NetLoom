@@ -53,7 +53,7 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           ENGINES="$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --paginate \
             --jq '.[] | select(.tag_name | startswith("engine-")) | .tag_name' | sort -V -r)"
-          PACKED="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq '.assets[] | "\(.name)\t\(.label)"' 2>/dev/null || true)"
+          PACKED="$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq ".[] | select(.tag_name == \"$TAG\") | .assets[] | \"\\(.name)\\t\\(.label)\"")"
           for p in win64 linux64 mac; do
             case $p in
               win64)   want='-win64\.zip$';         main="NetLoom-$VER-windows-x64-setup.exe" ;;
@@ -73,8 +73,9 @@ jobs:
               echo "$p: собираю на движке $ev"; echo "$p=$found" >> "$GITHUB_OUTPUT"
             fi
           done
+          # черновик: люди увидят релиз, когда в нём будут Windows, Linux и macOS
           if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" --title "NetLoom $VER" --notes "Сборка идёт — файлы появятся здесь." --latest
+            gh release create "$TAG" --draft --title "NetLoom $VER" --notes "Сборка идёт — файлы появятся здесь."
           fi
 
   windows:
@@ -167,3 +168,12 @@ jobs:
           bash tools/release-notes.sh "$TAG" > notes.md
           cat notes.md
           gh release edit "$TAG" --notes-file notes.md
+          VER="${TAG#v}"
+          NAMES="$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.tag_name == \"$TAG\") | .assets[].name")"
+          if grep -qx "NetLoom-$VER-windows-x64-setup.exe" <<<"$NAMES" && grep -qx "netloom_${VER}_amd64.deb" <<<"$NAMES" \
+             && grep -qx "NetLoom-$VER-macos-universal.dmg" <<<"$NAMES"; then
+            gh release edit "$TAG" --draft=false --latest
+            echo "Релиз $TAG опубликован"
+          else
+            echo "Пока не все платформы готовы — релиз остаётся черновиком"
+          fi
