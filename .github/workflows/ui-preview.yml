@@ -62,6 +62,7 @@ jobs:
           ![приватное окно](5-privatnoe.png)
           ![настройки](6-nastroiki.png)
           ![настройки, низ](7-nastroiki-niz.png)
+          ![опасный сайт](8-opasnyi-sait.png)
           MD
           git init -q
           git checkout -q -b preview

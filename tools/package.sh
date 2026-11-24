@@ -74,6 +74,11 @@ fetch_list adguard-russian https://filters.adtidy.org/extension/ublock/filters/1
 fetch_list adguard-tracking https://filters.adtidy.org/extension/ublock/filters/3.txt
 cp "$ROOT/ui/nlui/content/lib/netloom-rules.txt" "$APP/nlui/filters/netloom-rules.txt"
 
+step "Списки опасных сайтов"
+fetch_list urlhaus https://malware-filter.gitlab.io/malware-filter/urlhaus-filter-online.txt https://curbengh.github.io/malware-filter/urlhaus-filter-online.txt
+fetch_list phishing https://malware-filter.gitlab.io/malware-filter/phishing-filter.txt https://curbengh.github.io/malware-filter/phishing-filter.txt
+fetch_list pup https://malware-filter.gitlab.io/malware-filter/pup-filter.txt https://curbengh.github.io/malware-filter/pup-filter.txt
+
 step "Лицензии"
 cp "$ROOT/LICENSE" "$APP/LICENSE.txt"
 cat > "$APP/THIRD-PARTY.txt" <<TXT
@@ -82,6 +87,7 @@ NetLoom использует:
 - Xray-core $XRAY_TAG, MPL-2.0 — https://github.com/XTLS/Xray-core
 - sing-box $SB_TAG, GPL-3.0-or-later — https://github.com/SagerNet/sing-box
 - списки фильтров EasyList, EasyPrivacy, RU AdList, AdGuard Base/Russian/Tracking Protection — лицензии в заголовках списков
+- списки опасных сайтов malware-filter (URLhaus от abuse.ch, фишинг, нежелательные программы), CC0/CC BY-SA
 TXT
 
 step "Архив"

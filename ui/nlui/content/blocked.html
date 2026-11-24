@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src chrome:; style-src chrome: 'unsafe-inline'">
+  <title>Опасный сайт</title>
+  <link rel="stylesheet" href="chrome://netloom/content/nl.css">
+  <style>
+    html, body { height: 100%; }
+    body { display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .box { max-width: 520px; display: flex; flex-direction: column; gap: 14px; }
+    .icon { width: 48px; height: 48px; border-radius: 12px; background: #2A1215; border: 1px solid #7F1D1D; display: flex; align-items: center; justify-content: center; }
+    h1 { margin: 0; font-size: 22px; font-weight: 600; }
+    .host { font-family: ui-monospace, Consolas, monospace; color: #FCA5A5; word-break: break-all; }
+    .actions { display: flex; gap: 10px; align-items: center; margin-top: 6px; }
+    .link { background: none; border: 0; color: var(--muted); font-size: 12px; text-decoration: underline; cursor: pointer; padding: 0; margin-left: auto; }
+  </style>
+</head>
+<body>
+  <main class="box">
+    <div class="icon" aria-hidden="true">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#F87171" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"/><path d="M12 8v5"/><path d="M12 16.5v.01"/></svg>
+    </div>
+    <h1 id="title">Опасный сайт заблокирован</h1>
+    <div class="host" id="host"></div>
+    <p class="muted" id="reason"></p>
+    <div class="actions">
+      <button class="btn primary" id="back">Вернуться назад</button>
+      <button class="link" id="proceed">Всё равно открыть</button>
+    </div>
+  </main>
+  <script src="chrome://netloom/content/blocked.js"></script>
+</body>
+</html>

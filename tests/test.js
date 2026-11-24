@@ -150,6 +150,24 @@ test('синтаксис AdGuard/uBO не ломает разбор', function (
   assert.strictEqual(e.userStylesheet({}).indexOf('scriptlet'), -1);
 });
 
+test('защита от опасных сайтов блокирует сами страницы', function () {
+  const e = new F.Engine({ security: true });
+  e.addLists(['! URLhaus\n||malware.example^\n||1.2.3.4/payload.exe\n||phish.example^$document\n||all.example^$all']);
+  const q = function (url, type) { return e.match({ url: url, host: new URL(url).hostname, type: type, docHost: '' }); };
+  assert(q('https://malware.example/', 'main_frame'));
+  assert(q('https://sub.malware.example/x', 'main_frame'));
+  assert(q('http://1.2.3.4/payload.exe', 'main_frame'));
+  assert(!q('http://1.2.3.4/other', 'main_frame'));
+  assert(q('https://phish.example/login', 'main_frame'));
+  assert(q('https://all.example/', 'main_frame'));
+  assert(q('https://malware.example/a.js', 'script'));
+  assert(!q('https://good.example/', 'main_frame'));
+  // обычный блокировщик рекламы страницы не трогает
+  const ad = new F.Engine();
+  ad.addLists(['||malware.example^']);
+  assert(!ad.match({ url: 'https://malware.example/', host: 'malware.example', type: 'main_frame', docHost: '' }));
+});
+
 // ───────── общая таблица стилей ─────────
 function cssConds(css) {
   // вытаскивает условия @-moz-document и превращает regexp("…") обратно в строку regex

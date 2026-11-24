@@ -32,8 +32,17 @@ const LISTS = [
   { id: "netloom-rules", urls: null },
 ];
 
+// Списки опасных сайтов: проверка идёт на компьютере, адреса никуда не отправляются
+const SECURITY_LISTS = [
+  { id: "urlhaus", kind: "malware", urls: ["https://malware-filter.gitlab.io/malware-filter/urlhaus-filter-online.txt", "https://curbengh.github.io/malware-filter/urlhaus-filter-online.txt"] },
+  { id: "phishing", kind: "phishing", urls: ["https://malware-filter.gitlab.io/malware-filter/phishing-filter.txt", "https://curbengh.github.io/malware-filter/phishing-filter.txt"] },
+  { id: "pup", kind: "pup", urls: ["https://malware-filter.gitlab.io/malware-filter/pup-filter.txt", "https://curbengh.github.io/malware-filter/pup-filter.txt"] },
+];
+const BLOCKED_PAGE = "about:blocked";
+
 const DEFAULTS = {
   adblock: true,
+  security: true,
   vpn: false,
   ruDirect: true,
   rules: [], // [{host, mode: "vpn" | "direct"}]
@@ -173,6 +182,8 @@ for (const [k, v] of Object.entries({
 export const NetLoom = {
   settings: null,
   engine: null,
+  security: [], // [{kind, engine}]
+  securityBypass: new Set(), // сайты, которые пользователь открыл «всё равно» (до перезапуска)
   engineStats: null,
   sheetURI: null,
   vpn: { status: "off", error: "", port: 0, user: "", pass: "", gen: 0 },
@@ -214,6 +225,7 @@ export const NetLoom = {
     Services.obs.addObserver(this, "quit-application");
 
     await this.loadFilters();
+    await this.loadSecurity();
     if (this.settings.vpn) this.vpnConnect();
 
     lazy.setTimeout(() => this.updateLists(false), 2 * 60 * 1000);
@@ -269,6 +281,39 @@ export const NetLoom = {
     this.log("фильтры: " + JSON.stringify(this.engineStats));
   },
 
+  async loadSecurity() {
+    const engines = [];
+    for (const L of SECURITY_LISTS) {
+      const text = await this.readList(L.id);
+      if (!text) continue;
+      const engine = new NCFilters.Engine({ security: true });
+      engine.addLists([text]);
+      engines.push({ kind: L.kind, engine });
+    }
+    this.security = engines;
+    this.log("защита: списков " + engines.length + ", правил " + engines.reduce((n, x) => n + x.engine.stats().network, 0));
+  },
+
+  /** Опасен ли адрес: возвращает "malware" | "phishing" | "pup" или null */
+  dangerOf(url, host, type = "main_frame") {
+    if (!this.settings?.security || !this.security.length) return null;
+    if (this.securityBypass.has(host)) return null;
+    for (const { kind, engine } of this.security) {
+      if (engine.match({ url, host, type, docHost: "" })) return kind;
+    }
+    return null;
+  },
+
+  bypassDanger(host) {
+    if (host) this.securityBypass.add(host);
+  },
+
+  setSecurity(on) {
+    this.settings.security = !!on;
+    this.save();
+    this.notify();
+  },
+
   async applyStylesheet() {
     const sss = Cc["@mozilla.org/content/style-sheet-service;1"].getService(Ci.nsIStyleSheetService);
     if (this.sheetURI && sss.sheetRegistered(this.sheetURI, sss.USER_SHEET)) {
@@ -297,27 +342,29 @@ export const NetLoom = {
     try {
       const dir = PathUtils.join(this.dataDir, "filters");
       await IOUtils.makeDirectory(dir, { ignoreExisting: true });
-      for (const L of LISTS) {
+      let securityChanged = false;
+      for (const L of LISTS.concat(SECURITY_LISTS)) {
         if (!L.urls) continue;
+        const isSecurity = SECURITY_LISTS.includes(L);
         const path = PathUtils.join(dir, L.id + ".txt");
         try {
           const st = await IOUtils.stat(path);
-          if (!force && Date.now() - st.lastModified < 4 * DAY) continue;
+          if (!force && Date.now() - st.lastModified < (isSecurity ? DAY : 4 * DAY)) continue;
         } catch (e) {}
         for (const url of L.urls) {
           try {
             const { text } = await httpGet(url);
             if (text.length < 1000 || !/^\s*[[!]/.test(text)) continue;
             await IOUtils.writeUTF8(path, text, { tmpPath: path + ".tmp" });
-            changed = true;
+            if (isSecurity) securityChanged = true; else changed = true;
             break;
           } catch (e) {}
         }
       }
-      if (changed) {
-        await this.loadFilters();
-        this.notify();
-      }
+      if (changed) await this.loadFilters();
+      if (securityChanged) await this.loadSecurity();
+      if (changed || securityChanged) this.notify();
+      changed = changed || securityChanged;
     } finally {
       this._listsUpdating = false;
     }
@@ -334,7 +381,7 @@ export const NetLoom = {
   },
 
   onRequest(subject) {
-    if (!this.settings?.adblock || !this.engine) return;
+    if (!this.settings) return;
     let channel;
     try { channel = subject.QueryInterface(Ci.nsIHttpChannel); } catch (e) { return; }
     const li = channel.loadInfo;
@@ -343,6 +390,29 @@ export const NetLoom = {
     const bc = BrowsingContext.get(li.browsingContextID);
     const top = bc?.top;
     const browser = top?.embedderElement;
+
+    // защита от опасных сайтов: страницы, рамки и загрузки
+    if (this.settings.security && this.security.length) {
+      const uri = channel.URI;
+      if (/^(https?|wss?)$/.test(uri.scheme)) {
+        const danger = this.dangerOf(uri.spec, uri.host, type);
+        if (danger) {
+          channel.cancel(Cr.NS_ERROR_ABORT);
+          this.log("заблокирован опасный адрес (" + danger + "): " + uri.host);
+          if (type === "main_frame" && browser) {
+            const page = BLOCKED_PAGE + "?kind=" + danger + "&url=" + encodeURIComponent(uri.spec);
+            lazy.setTimeout(() => {
+              try {
+                browser.fixupAndLoadURIString(page, { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });
+              } catch (e) { this.log("страница предупреждения: " + e); }
+            }, 0);
+          }
+          return;
+        }
+      }
+    }
+
+    if (!this.settings.adblock || !this.engine) return;
     if (type === "main_frame") {
       if (browser) this.setCount(browser, 0);
       return;

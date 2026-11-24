@@ -113,7 +113,6 @@ const CLEAR_ON = {
   "privacy.clearOnShutdown.formdata": false,
   "privacy.clearOnShutdown.siteSettings": false,
 };
-const SAFE_BROWSING = ["browser.safebrowsing.malware.enabled", "browser.safebrowsing.phishing.enabled", "browser.safebrowsing.downloads.enabled"];
 
 function primaryPasswordSet() {
   try {
@@ -131,7 +130,7 @@ function renderPrivacy() {
   $("adblock").checked = !!NetLoom.settings?.adblock;
   $("clearCookies").checked = prefs.bool("privacy.sanitize.sanitizeOnShutdown") && prefs.bool("privacy.clearOnShutdown_v2.cookiesAndStorage", prefs.bool("privacy.clearOnShutdown.cookies"));
   $("rfp").checked = prefs.bool("privacy.resistFingerprinting");
-  $("safebrowsing").checked = prefs.bool(SAFE_BROWSING[0], true) && prefs.bool(SAFE_BROWSING[1], true);
+  $("safebrowsing").checked = NetLoom.settings?.security !== false;
 }
 
 $("ppChange").addEventListener("click", () => {
@@ -144,7 +143,7 @@ $("clearCookies").addEventListener("change", e => {
   else prefs.setBool("privacy.sanitize.sanitizeOnShutdown", false);
 });
 $("rfp").addEventListener("change", e => prefs.setBool("privacy.resistFingerprinting", e.target.checked));
-$("safebrowsing").addEventListener("change", e => SAFE_BROWSING.forEach(p => prefs.setBool(p, e.target.checked)));
+$("safebrowsing").addEventListener("change", e => NetLoom.setSecurity(e.target.checked));
 
 // ═════════ VPN и прокси ═════════
 function renderVpn() {

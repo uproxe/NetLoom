@@ -15,6 +15,7 @@ const PAGES = {
   preferences: "chrome://netloom/content/settings.html",
   start: "chrome://netloom/content/newtab.html",
   privatebrowsing: "chrome://netloom/content/private.html",
+  blocked: "chrome://netloom/content/blocked.html",
   // служебные страницы движка о Mozilla — пустая страница
   mozilla: "chrome://netloom/content/newtab.html",
   robots: "chrome://netloom/content/newtab.html",

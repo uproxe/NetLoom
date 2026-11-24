@@ -42,6 +42,11 @@ xdotool key Up Up Return; sleep 5
 shot 6-nastroiki
 xdotool key --clearmodifiers End; sleep 2
 shot 7-nastroiki-niz
+# страница предупреждения об опасном сайте
+xdotool key --clearmodifiers ctrl+l; sleep 1
+xdotool type --delay 15 "about:blocked?kind=phishing&url=https%3A%2F%2Fsecure-login.example%2Fbank"
+xdotool key Return; sleep 4
+shot 8-opasnyi-sait
 # приватное окно — последним
 xdotool key --clearmodifiers ctrl+shift+p; sleep 5
 shot 5-privatnoe

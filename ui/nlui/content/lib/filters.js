@@ -246,6 +246,8 @@
   // ───────── Движок ─────────
   function Engine(opts) {
     this.validateSelector = (opts && opts.validateSelector) || null;
+    // режим защиты от опасных сайтов: правила блокируют и сами страницы
+    this.security = !!(opts && opts.security);
     this.block = new Store();
     this.allow = new Store();
     this.docAllow = [];                 // @@…$document — сайт полностью без блокировки
@@ -353,6 +355,11 @@
     const opts = so[1] ? parseOptions(so[1]) : parseOptions('');
     if (opts.unsupported) { this.skipped++; return; }
 
+    // в режиме защиты «$document» у блокирующего правила значит «блокировать и страницу»
+    if (this.security && !exception && opts.special === 'document') {
+      opts.special = null;
+      opts.mask |= ALL_TYPES;
+    }
     // особые исключения уровня страницы
     if (opts.special) {
       if (!exception) { this.skipped++; return; } // блокировать документы целиком не умеем
@@ -449,7 +456,7 @@
    * @returns {null | {rule:string}}  null — пропустить, объект — заблокировать
    */
   Engine.prototype.match = function (q) {
-    const bit = WR_TYPES[q.type];
+    const bit = this.security && q.type === 'main_frame' ? T.subdocument : WR_TYPES[q.type];
     if (!bit) return null; // основной документ не блокируем
     const host = (q.host || '').toLowerCase();
     const docHost = (q.docHost || '').toLowerCase();
