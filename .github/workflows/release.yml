@@ -274,8 +274,8 @@ jobs:
       - name: Старые и неудачные запуски
         run: |
           # остаются только удачные запуски нынешних процессов: «Движок», «Выпуск», «Проверка»
-          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs?per_page=100&status=completed" \
-            --jq '.workflow_runs[] | "\(.id)\t\(.name)\t\(.conclusion)"' |
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs?per_page=100" \
+            --jq '.workflow_runs[] | select(.status == "completed") | "\(.id)\t\(.name)\t\(.conclusion)"' |
           while IFS=$'\t' read -r id name concl; do
             case "$name" in Движок|Выпуск|Проверка) [ "$concl" = success ] && continue ;; esac
             if gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/runs/$id" >/dev/null; then echo "убран запуск $id: $name ($concl)"
