@@ -10,6 +10,11 @@ name: Выпуск
 
 on:
   workflow_dispatch:
+    inputs:
+      tidy_only:
+        description: "Только уборка (без сборки)"
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths: ["VERSION"]
@@ -32,7 +37,7 @@ env:
 jobs:
   prepare:
     name: Что собирать
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    if: (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success') && !inputs.tidy_only
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.p.outputs.tag }}
@@ -260,6 +265,7 @@ jobs:
     name: Уборка
     needs: publish
     if: always()
+    continue-on-error: true
     runs-on: ubuntu-latest
     permissions:
       actions: write
@@ -272,7 +278,8 @@ jobs:
             --jq '.workflow_runs[] | "\(.id)\t\(.name)\t\(.conclusion)"' |
           while IFS=$'\t' read -r id name concl; do
             case "$name" in Движок|Выпуск|Проверка) [ "$concl" = success ] && continue ;; esac
-            gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/runs/$id" >/dev/null && echo "убран запуск $id: $name ($concl)"
+            if gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/runs/$id" >/dev/null; then echo "убран запуск $id: $name ($concl)"
+            else echo "не удалось убрать запуск $id: $name"; fi
           done
       - name: Служебные релизы движка
         run: |
@@ -281,8 +288,8 @@ jobs:
           for tag in $(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[] | select(.tag_name | startswith("engine-")) | .tag_name' | sort -V -r); do
             n=$((n + 1))
             if [ $n -le 2 ]; then
-              gh release edit "$tag" --prerelease --title "Служебное: движок ${tag#engine-} (не для установки)" >/dev/null
+              gh release edit "$tag" -R "$GITHUB_REPOSITORY" --prerelease --title "Служебное: движок ${tag#engine-} (не для установки)" >/dev/null
             else
-              gh release delete "$tag" --yes --cleanup-tag && echo "убран старый движок $tag"
+              gh release delete "$tag" -R "$GITHUB_REPOSITORY" --yes --cleanup-tag && echo "убран старый движок $tag"
             fi
           done
