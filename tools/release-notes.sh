@@ -8,7 +8,7 @@ REPO="${GITHUB_REPOSITORY:-uproxe/NetLoom}"
 ASSETS="$(gh api "repos/$REPO/releases?per_page=100" --jq ".[] | select(.tag_name == \"$TAG\") | .assets[] | \"\\(.name)\\t\\(.label)\\t\\(.size)\"")"
 has() { grep -Eq "^$1	" <<<"$ASSETS"; }
 size() { awk -F'\t' -v n="$1" '$1 == n { printf "%.0f МБ", $3 / 1048576 }' <<<"$ASSETS"; }
-engine() { awk -F'\t' -v n="$1" '$1 == n { if (match($2, /движок [0-9.]+/)) print substr($2, RSTART + 7, RLENGTH - 7) }' <<<"$ASSETS"; }
+engine() { awk -F'\t' -v n="$1" '$1 == n { print $2 }' <<<"$ASSETS" | sed -n 's/.*движок \([0-9.]*\).*/\1/p'; }
 link() { echo "https://github.com/$REPO/releases/download/$TAG/$1"; }
 VER="${TAG#v}"
 
