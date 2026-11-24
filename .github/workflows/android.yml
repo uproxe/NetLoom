@@ -51,28 +51,36 @@ jobs:
           fi
           # какая версия Android SDK нужна движку
           curl -fsSL -o gv.aar "https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/$GV/geckoview-$GV.aar"
-          SDK="$(unzip -p gv.aar META-INF/com/android/build/gradle/aar-metadata.properties 2>/dev/null | sed -n 's/^minCompileSdk=//p' | tr -d '\r')"
-          unzip -p gv.aar META-INF/com/android/build/gradle/aar-metadata.properties || true
+          META="$(unzip -p gv.aar META-INF/com/android/build/gradle/aar-metadata.properties 2>/dev/null | tr -d '\r' || true)"
           rm -f gv.aar
-          echo "sdk=${SDK:-36}" >> "$GITHUB_OUTPUT"
+          echo "$META"
+          MAJOR="$(sed -n 's/^minCompileSdk=//p' <<<"$META")"; MINOR="$(sed -n 's/^minCompileMinorSdk=//p' <<<"$META")"
+          echo "sdk_major=${MAJOR:-36}" >> "$GITHUB_OUTPUT"
+          echo "sdk_minor=${MINOR:-0}" >> "$GITHUB_OUTPUT"
+          # последние стабильные Android Gradle Plugin 9.x и Gradle 9.x
+          AGP="$(curl -fsSL https://dl.google.com/dl/android/maven2/com/android/tools/build/gradle/maven-metadata.xml \
+            | grep -oP '(?<=<version>)9\.[0-9]+\.[0-9]+(?=</version>)' | sort -V | tail -1)"
+          GRADLE="$(curl -fsSL https://services.gradle.org/versions/all \
+            | python3 -c "import json,sys; v=[x['version'] for x in json.load(sys.stdin) if not (x['snapshot'] or x['nightly'] or x['releaseNightly'] or x['broken'] or x['rcFor'] or x['milestoneFor']) and x['version'].startswith('9.')]; print(sorted(v, key=lambda s: [int(p) for p in s.split('.')])[-1])")"
+          echo "Android Gradle Plugin $AGP, Gradle $GRADLE"
+          echo "agp=$AGP" >> "$GITHUB_OUTPUT"
+          echo "gradle=$GRADLE" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-java@v4
         if: steps.gv.outputs.skip != 'true'
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
 
       - uses: gradle/actions/setup-gradle@v4
         if: steps.gv.outputs.skip != 'true'
         with:
-          gradle-version: "8.14.3"
+          gradle-version: ${{ steps.gv.outputs.gradle }}
 
-      - name: Android SDK
+      - name: Лицензии Android SDK
         if: steps.gv.outputs.skip != 'true'
-        run: |
-          SDK="${{ steps.gv.outputs.sdk }}"
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-$SDK" "build-tools;36.0.0" | tail -2
+        # нужные платформы и инструменты сборка скачает сама
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
 
       - name: Библиотеки, фильтры и ядра VPN
         if: steps.gv.outputs.skip != 'true'
@@ -100,7 +108,9 @@ jobs:
         run: |
           gradle -p android --no-daemon --stacktrace assembleRelease \
             -PgeckoviewVersion="${{ steps.gv.outputs.version }}" \
-            -PcompileSdkLevel="${{ steps.gv.outputs.sdk }}"
+            -PagpVersion="${{ steps.gv.outputs.agp }}" \
+            -PcompileSdkMajor="${{ steps.gv.outputs.sdk_major }}" \
+            -PcompileSdkMinor="${{ steps.gv.outputs.sdk_minor }}"
           VER="$(cat VERSION)"
           mkdir -p dist
           cp android/app/build/outputs/apk/release/app-release.apk "dist/NetLoom-$VER-android-arm64.apk"

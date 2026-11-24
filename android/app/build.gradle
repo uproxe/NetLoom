@@ -1,68 +1,67 @@
 // NetLoom для Android: свой интерфейс на движке GeckoView.
-// Версию движка передаёт сборка: -PgeckoviewVersion=… (по умолчанию — последняя из канала release).
+// Сборка передаёт: -PgeckoviewVersion=… -PcompileSdkMajor=… -PcompileSdkMinor=… (их требует движок).
 plugins {
     id "com.android.application"
 }
 
-def geckoviewVersion = project.findProperty("geckoviewVersion") ?: "+"
-def appVersion = project.findProperty("appVersion") ?: file("../../VERSION").text.trim()
-def sdk = (project.findProperty("compileSdkLevel") ?: "36") as int
-def parts = appVersion.tokenize(".").collect { it as int }
+def geckoviewVersion = providers.gradleProperty("geckoviewVersion").getOrElse("+")
+def appVersion = providers.gradleProperty("appVersion").getOrElse(file("../../VERSION").text.trim())
+def sdkMajor = providers.gradleProperty("compileSdkMajor").getOrElse("36").toInteger()
+def sdkMinor = providers.gradleProperty("compileSdkMinor").getOrElse("0").toInteger()
+def parts = appVersion.tokenize(".").collect { it.toInteger() }
 def code = parts[0] * 10000 + parts[1] * 100 + parts[2]
 
 android {
-    namespace "io.github.uproxe.netloom"
-    compileSdk sdk
+    namespace = "io.github.uproxe.netloom"
+    compileSdk {
+        version = release(sdkMajor) { minorApiLevel = sdkMinor }
+    }
 
     defaultConfig {
-        applicationId "io.github.uproxe.netloom"
-        minSdk 26
-        targetSdk 34
-        versionCode code
-        versionName appVersion
-        buildConfigField "String", "GECKOVIEW_VERSION", "\"${geckoviewVersion}\""
-        ndk { abiFilters "arm64-v8a" }
+        applicationId = "io.github.uproxe.netloom"
+        minSdk = 26
+        targetSdk = 34
+        versionCode = code
+        versionName = appVersion
+        buildConfigField("String", "GECKOVIEW_VERSION", "\"${geckoviewVersion}\"")
+        ndk { abiFilters.add("arm64-v8a") }
     }
 
     signingConfigs {
         release {
             def ks = System.getenv("NETLOOM_KEYSTORE")
-            storeFile file(ks ?: "../signing/netloom.jks")
-            storePassword System.getenv("NETLOOM_KEYSTORE_PASSWORD") ?: "netloom-public"
-            keyAlias System.getenv("NETLOOM_KEY_ALIAS") ?: "netloom"
-            keyPassword System.getenv("NETLOOM_KEY_PASSWORD") ?: (System.getenv("NETLOOM_KEYSTORE_PASSWORD") ?: "netloom-public")
+            def pass = System.getenv("NETLOOM_KEYSTORE_PASSWORD") ?: "netloom-public"
+            storeFile = file(ks ?: "../signing/netloom.jks")
+            storePassword = pass
+            keyAlias = System.getenv("NETLOOM_KEY_ALIAS") ?: "netloom"
+            keyPassword = System.getenv("NETLOOM_KEY_PASSWORD") ?: pass
         }
     }
 
     buildTypes {
         release {
-            minifyEnabled false
-            signingConfig signingConfigs.release
+            minifyEnabled = false
+            signingConfig = signingConfigs.release
         }
     }
 
     buildFeatures {
-        buildConfig true
+        buildConfig = true
     }
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     // ядра VPN — обычные программы под именем lib*.so: Android разрешает запускать их из папки библиотек
     packaging {
-        jniLibs { useLegacyPackaging true }
-    }
-
-    androidResources {
-        ignoreAssetsPattern "!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~"
-        noCompress "ja"
+        jniLibs { useLegacyPackaging = true }
     }
 
     lint {
-        abortOnError false
-        checkReleaseBuilds false
+        abortOnError = false
+        checkReleaseBuilds = false
     }
 }
 
