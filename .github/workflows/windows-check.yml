@@ -12,7 +12,8 @@ on:
         default: ""
 
 permissions:
-  contents: read
+  # черновики релизов видны только с правом записи
+  contents: write
 
 jobs:
   install:
