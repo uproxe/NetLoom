@@ -69,6 +69,9 @@ fetch_list easylist https://easylist.to/easylist/easylist.txt https://easylist-d
 fetch_list easyprivacy https://easylist.to/easylist/easyprivacy.txt https://easylist-downloads.adblockplus.org/easyprivacy.txt
 fetch_list ruadlist https://easylist-downloads.adblockplus.org/advblock.txt
 fetch_list rucounters https://easylist-downloads.adblockplus.org/cntblock.txt
+fetch_list adguard-base https://filters.adtidy.org/extension/ublock/filters/2_without_easylist.txt
+fetch_list adguard-russian https://filters.adtidy.org/extension/ublock/filters/1.txt
+fetch_list adguard-tracking https://filters.adtidy.org/extension/ublock/filters/3.txt
 cp "$ROOT/ui/nlui/content/lib/netloom-rules.txt" "$APP/nlui/filters/netloom-rules.txt"
 
 step "Лицензии"
@@ -78,7 +81,7 @@ NetLoom использует:
 - движок Gecko (Mozilla), MPL-2.0 — https://www.mozilla.org/MPL/2.0/
 - Xray-core $XRAY_TAG, MPL-2.0 — https://github.com/XTLS/Xray-core
 - sing-box $SB_TAG, GPL-3.0-or-later — https://github.com/SagerNet/sing-box
-- списки фильтров EasyList, EasyPrivacy, RU AdList — лицензии в заголовках списков
+- списки фильтров EasyList, EasyPrivacy, RU AdList, AdGuard Base/Russian/Tracking Protection — лицензии в заголовках списков
 TXT
 
 step "Архив"

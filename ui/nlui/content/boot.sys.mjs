@@ -14,6 +14,15 @@ const PAGES = {
   settings: "chrome://netloom/content/settings.html",
   preferences: "chrome://netloom/content/settings.html",
   start: "chrome://netloom/content/newtab.html",
+  privatebrowsing: "chrome://netloom/content/private.html",
+  // служебные страницы движка о Mozilla — пустая страница
+  mozilla: "chrome://netloom/content/newtab.html",
+  robots: "chrome://netloom/content/newtab.html",
+  rights: "chrome://netloom/content/newtab.html",
+  credits: "chrome://netloom/content/newtab.html",
+  license: "chrome://netloom/content/newtab.html",
+  logo: "chrome://netloom/content/newtab.html",
+  welcome: "chrome://netloom/content/newtab.html",
 };
 
 /**

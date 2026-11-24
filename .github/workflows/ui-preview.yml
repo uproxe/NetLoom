@@ -10,6 +10,9 @@ on:
       - "ui/**"
       - "tools/apply-ui.sh"
       - "tools/ui-preview.sh"
+      - "tools/preview-rebrand.sh"
+      - "tools/debrand.py"
+      - "engine/branding/**"
       - ".github/workflows/ui-preview.yml"
 
 permissions:
@@ -35,6 +38,7 @@ jobs:
           curl -fL --retry 5 -o engine.tar.xz "https://archive.mozilla.org/pub/firefox/releases/${V}esr/linux-x86_64/ru/firefox-${V}esr.tar.xz" \
             || curl -fL --retry 5 -o engine.tar.bz2 "https://archive.mozilla.org/pub/firefox/releases/${V}esr/linux-x86_64/ru/firefox-${V}esr.tar.bz2"
           if [ -f engine.tar.xz ]; then tar -xJf engine.tar.xz; else tar -xjf engine.tar.bz2; fi
+          bash tools/preview-rebrand.sh firefox
           bash tools/apply-ui.sh firefox
 
       - name: Снимки
@@ -55,7 +59,7 @@ jobs:
           ![сайт](2-sait.png)
           ![меню](3-menu.png)
           ![VPN](4-vpn.png)
-          ![реклама](5-reklama.png)
+          ![приватное окно](5-privatnoe.png)
           ![настройки](6-nastroiki.png)
           ![настройки, низ](7-nastroiki-niz.png)
           MD

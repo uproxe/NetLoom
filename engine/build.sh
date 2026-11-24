@@ -51,6 +51,16 @@ done
 shopt -u nullglob
 cp "$ROOT/engine/mozconfig" "$SRC/mozconfig"
 
+# никакого Mozilla в свойствах файлов (exe/dll), папке профиля и реестре
+find "$SRC" -name module.ver -not -path '*/test*' -print0 | xargs -0 sed -i \
+  -e 's/^WIN32_MODULE_COMPANYNAME=.*/WIN32_MODULE_COMPANYNAME=NetLoom/' \
+  -e 's/^WIN32_MODULE_COPYRIGHT=.*/WIN32_MODULE_COPYRIGHT=NetLoom. MPL 2.0/' \
+  -e 's/^WIN32_MODULE_TRADEMARKS=.*/WIN32_MODULE_TRADEMARKS=NetLoom/'
+sed -i -e 's/"WIN32_MODULE_COMPANYNAME", "Mozilla Foundation"/"WIN32_MODULE_COMPANYNAME", "NetLoom"/' \
+       -e 's/"WIN32_MODULE_TRADEMARKS", "Mozilla"/"WIN32_MODULE_TRADEMARKS", "NetLoom"/' "$SRC/config/create_rc.py"
+sed -i 's/imply_option("MOZ_APP_VENDOR", "Mozilla")/imply_option("MOZ_APP_VENDOR", "NetLoom")/' "$SRC/browser/moz.configure"
+grep -q 'imply_option("MOZ_APP_VENDOR", "NetLoom")' "$SRC/browser/moz.configure" || echo "::warning::не удалось сменить MOZ_APP_VENDOR"
+
 # ───────── 3. Русский язык ─────────
 step "3/7 Русская локализация"
 L10N_REV="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['ru']['revision'])" "$SRC/browser/locales/l10n-changesets.json")"
@@ -64,6 +74,10 @@ git -C "$WORK/l10n" fetch -q --depth 1 --filter=blob:none origin "$L10N_REV"
 git -C "$WORK/l10n" checkout -q FETCH_HEAD
 mv "$WORK/l10n/ru" "$L10N_BASE/ru"
 rm -rf "$WORK/l10n"
+
+# убрать слова Firefox и Mozilla из всех текстов интерфейса (английских и русских)
+mapfile -t EN_DIRS < <(find "$SRC" -type d -path '*/locales/en-US' -not -path '*/test*' -not -path '*/third_party/*')
+python3 "$ROOT/tools/debrand.py" "${EN_DIRS[@]}" "$L10N_BASE/ru"
 
 # ───────── 4. Инструменты кросс-сборки ─────────
 step "4/7 Инструменты кросс-сборки (wine, Windows SDK)"

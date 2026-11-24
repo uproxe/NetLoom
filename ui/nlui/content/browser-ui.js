@@ -59,22 +59,7 @@
     switchToTabHavingURI(url, true, { ignoreFragment: "whenComparingAndReplace", triggeringPrincipal: system() });
   }
 
-  function currentHost() {
-    try {
-      const uri = gBrowser.selectedBrowser.currentURI;
-      return /^https?$/.test(uri.scheme) ? uri.host : "";
-    } catch (e) {
-      return "";
-    }
-  }
-
-  // ───────── Кнопки в панели адреса ─────────
-  const shieldCount = html("span", { class: "count" });
-  const shieldBtn = html("button", {
-    id: "netloom-shield", class: "netloom-btn", title: "Блокировка рекламы", "aria-label": "Блокировка рекламы",
-    onclick: () => shieldMenu.openPopup(shieldBtn, "after_end", 0, 4),
-  }, [svg(["M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"], { stroke: "#38BDF8" }), shieldCount]);
-
+  // ───────── Кнопки в панели адреса: VPN и меню ─────────
   const vpnLabel = html("span", { text: "VPN" });
   const vpnBtn = html("button", {
     id: "netloom-vpn", class: "netloom-btn", "aria-label": "VPN",
@@ -87,32 +72,12 @@
   }, [svg(["M4 7h16", "M4 12h16", "M4 17h16"])]);
 
   const tools = xul("toolbaritem", { id: "netloom-tools", removable: "false", overflows: "false" });
-  tools.append(shieldBtn, vpnBtn, menuBtn);
+  tools.append(vpnBtn, menuBtn);
   const urlbarContainer = doc.getElementById("urlbar-container");
   if (urlbarContainer) urlbarContainer.after(tools);
   else doc.getElementById("nav-bar-customization-target")?.append(tools);
 
-  // ───────── Меню блокировки ─────────
   const popupSet = doc.getElementById("mainPopupSet");
-  const shieldMenu = xul("menupopup", { id: "netloom-shield-menu", class: "netloom-menu" });
-  const miAdblock = xul("menuitem", { type: "checkbox", label: "Блокировать рекламу" });
-  const miSite = xul("menuitem", { type: "checkbox", label: "" });
-  miAdblock.addEventListener("command", () => NetLoom.setAdblock(miAdblock.getAttribute("checked") === "true"));
-  miSite.addEventListener("command", async () => {
-    const host = currentHost();
-    if (!host) return;
-    await NetLoom.setSiteAllowed(host, miSite.getAttribute("checked") !== "true");
-    gBrowser.reload();
-  });
-  shieldMenu.append(miAdblock, miSite);
-  shieldMenu.addEventListener("popupshowing", () => {
-    const host = currentHost();
-    miAdblock.setAttribute("checked", String(!!NetLoom.settings?.adblock));
-    miSite.hidden = !host || !NetLoom.settings?.adblock;
-    miSite.setAttribute("label", "Блокировать на " + host);
-    miSite.setAttribute("checked", String(!NetLoom.isAllowlisted(host)));
-  });
-  popupSet.append(shieldMenu);
 
   // ───────── Панель VPN ─────────
   const vpnPanel = xul("panel", {
@@ -179,41 +144,22 @@
     vpnBtn.setAttribute("title", status === "error" ? NetLoom.vpn.error : "VPN");
   }
 
-  function updateShield() {
-    const on = !!NetLoom.settings?.adblock;
-    const n = NetLoom.blockedFor(gBrowser.selectedBrowser);
-    shieldBtn.toggleAttribute("off", !on || NetLoom.isAllowlisted(currentHost()));
-    shieldCount.textContent = on && n ? (n > 999 ? "999+" : String(n)) : "";
-    shieldBtn.setAttribute("aria-label", on ? "Блокировка рекламы: заблокировано " + n : "Блокировка рекламы выключена");
-  }
-
   const observer = {
     observe(subject, topic) {
-      if (topic === "netloom-state") {
-        updateVpn();
-        updateShield();
-      } else if (topic === "netloom-blocked" && subject === gBrowser.selectedBrowser) {
-        updateShield();
-      }
+      if (topic === "netloom-state") updateVpn();
     },
     QueryInterface: ChromeUtils.generateQI(["nsIObserver"]),
   };
   Services.obs.addObserver(observer, "netloom-state");
-  Services.obs.addObserver(observer, "netloom-blocked");
-  gBrowser.tabContainer.addEventListener("TabSelect", updateShield);
 
   window.addEventListener("unload", () => {
     Services.obs.removeObserver(observer, "netloom-state");
-    Services.obs.removeObserver(observer, "netloom-blocked");
   }, { once: true });
 
   // своя новая вкладка не показывает адрес в строке
   if (Array.isArray(window.gInitialPages) && !window.gInitialPages.includes(NEWTAB_URL)) window.gInitialPages.push(NEWTAB_URL);
 
-  NetLoom.init().then(() => {
-    updateVpn();
-    updateShield();
-  });
+  NetLoom.init().then(updateVpn);
 
   // мастер-пароль обязателен: предложить создать, если его ещё нет
   setTimeout(() => {
@@ -230,5 +176,5 @@
     }
   }, 1500);
 
-  window.NetLoomUI = { openSettings, updateVpn, updateShield };
+  window.NetLoomUI = { openSettings, updateVpn };
 })();

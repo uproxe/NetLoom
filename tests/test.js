@@ -132,6 +132,24 @@ test('шаблон → regex', function () {
   assert(!re.test('https://ex.community/ads/1'));
 });
 
+test('несколько списков и $badfilter', function () {
+  const e = new F.Engine();
+  e.addLists(['||ads.one.com^\n||keep.com^$script\n##.banner', '||ads.one.com^$badfilter\n||two.net^$third-party']);
+  const q = function (url, docHost) { return e.match({ url: url, host: new URL(url).hostname, type: 'script', docHost: docHost || 'page.ru' }); };
+  assert(!q('https://ads.one.com/a.js'), 'отключено через $badfilter');
+  assert(q('https://keep.com/a.js'));
+  assert(q('https://two.net/a.js'));
+  assert.strictEqual(e.badfiltered, 1);
+});
+test('синтаксис AdGuard/uBO не ломает разбор', function () {
+  const e = new F.Engine();
+  e.addLists(['!#if (adguard)\n||x.com^$removeparam=utm_source\nexample.com#$#.ad { display: none !important; }\nexample.com#%#//scriptlet("abort-on-property-read", "ads")\nexample.com##+js(set-constant, ads, false)\nexample.com##.ad:style(height: 0)\n||y.com^$redirect=noopjs\n||z.com^$3p,xhr\n!#endif']);
+  assert(!e.match({ url: 'https://x.com/a', host: 'x.com', type: 'script', docHost: 'p.ru' }));
+  assert(e.match({ url: 'https://z.com/a', host: 'z.com', type: 'xmlhttprequest', docHost: 'p.ru' }));
+  assert(!e.match({ url: 'https://z.com/a', host: 'z.com', type: 'image', docHost: 'p.ru' }));
+  assert.strictEqual(e.userStylesheet({}).indexOf('scriptlet'), -1);
+});
+
 // ───────── общая таблица стилей ─────────
 function cssConds(css) {
   // вытаскивает условия @-moz-document и превращает regexp("…") обратно в строку regex

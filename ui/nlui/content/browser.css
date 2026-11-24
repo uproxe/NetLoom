@@ -187,13 +187,6 @@
 .netloom-btn svg {
   pointer-events: none;
 }
-#netloom-shield .count {
-  color: var(--nl-muted);
-  min-width: 10px;
-}
-#netloom-shield[off] svg {
-  opacity: 0.45;
-}
 #netloom-vpn {
   height: 26px;
   padding: 0 11px 0 9px;

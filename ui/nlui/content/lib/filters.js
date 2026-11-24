@@ -266,6 +266,34 @@
     this._genericCSS = null;
   };
 
+  /**
+   * Несколько списков сразу (EasyList, AdGuard…). Правила с $badfilter из любого
+   * списка отключают совпадающие правила во всех остальных.
+   */
+  Engine.prototype.addLists = function (texts) {
+    const bad = new Set();
+    const all = texts.map(function (t) { return t.split(/\r?\n/); });
+    for (const lines of all) {
+      for (const raw of lines) {
+        if (raw.indexOf('badfilter') < 0) continue;
+        const line = raw.trim();
+        const i = line.lastIndexOf('$');
+        if (i < 0) continue;
+        const opts = line.slice(i + 1).split(',').filter(function (o) { return o.trim() !== 'badfilter'; });
+        bad.add(opts.length ? line.slice(0, i) + '$' + opts.join(',') : line.slice(0, i));
+      }
+    }
+    this.badfiltered = 0;
+    for (const lines of all) {
+      for (const raw of lines) {
+        const line = raw.trim();
+        if (bad.size && bad.has(line)) { this.badfiltered++; continue; }
+        this.addLine(line);
+      }
+    }
+    this._genericCSS = null;
+  };
+
   const COSMETIC_SEP = /^([^\s#]*?)(#@?[?$%]?#)(.+)$/;
   const EXT_SELECTOR = /:-abp-|:has-text\(|:contains\(|:xpath\(|:upward\(|:remove\(|:style\(|:matches-css|:min-text-length|:watch-attr|:others\(|:matches-path|:matches-attr|:matches-prop|:matches-media|:if\(|:if-not\(|:nth-ancestor|:-ext-|:remove-attr|:remove-class/;
 

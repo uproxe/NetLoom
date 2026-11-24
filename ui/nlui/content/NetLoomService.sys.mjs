@@ -20,11 +20,15 @@ const DAY = 24 * 3600 * 1000;
 const STATE_TOPIC = "netloom-state";
 const COUNT_TOPIC = "netloom-blocked";
 
+// Базы фильтров: Adblock (EasyList) и AdGuard вместе
 const LISTS = [
   { id: "easylist", urls: ["https://easylist.to/easylist/easylist.txt", "https://easylist-downloads.adblockplus.org/easylist.txt"] },
   { id: "easyprivacy", urls: ["https://easylist.to/easylist/easyprivacy.txt", "https://easylist-downloads.adblockplus.org/easyprivacy.txt"] },
   { id: "ruadlist", urls: ["https://easylist-downloads.adblockplus.org/advblock.txt"] },
   { id: "rucounters", urls: ["https://easylist-downloads.adblockplus.org/cntblock.txt"] },
+  { id: "adguard-base", urls: ["https://filters.adtidy.org/extension/ublock/filters/2_without_easylist.txt"] },
+  { id: "adguard-russian", urls: ["https://filters.adtidy.org/extension/ublock/filters/1.txt"] },
+  { id: "adguard-tracking", urls: ["https://filters.adtidy.org/extension/ublock/filters/3.txt"] },
   { id: "netloom-rules", urls: null },
 ];
 
@@ -253,10 +257,12 @@ export const NetLoom = {
 
   async loadFilters() {
     const engine = new NCFilters.Engine({});
+    const texts = [];
     for (const L of LISTS) {
       const text = await this.readList(L.id);
-      if (text) engine.addList(text);
+      if (text) texts.push(text);
     }
+    engine.addLists(texts);
     this.engine = engine;
     this.engineStats = engine.stats();
     await this.applyStylesheet();

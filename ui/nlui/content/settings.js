@@ -307,14 +307,20 @@ function renderFilters() {
   const al = $("allowList");
   al.textContent = "";
   const allow = NetLoom.settings?.allowlist || [];
-  if (!allow.length) al.append(el("div", { class: "empty", text: "Реклама блокируется на всех сайтах" }));
   for (const host of allow) {
     al.append(el("div", { class: "item" }, [
       el("span", { class: "name", text: host }),
-      el("button", { class: "btn", text: "Блокировать снова", onclick: () => NetLoom.setSiteAllowed(host, false) }),
+      el("button", { class: "icon-x", text: "×", "aria-label": "Снова блокировать на " + host, onclick: () => NetLoom.setSiteAllowed(host, false) }),
     ]));
   }
 }
+$("allowAdd").addEventListener("click", async () => {
+  const host = $("allowHost").value.trim();
+  if (!host) return;
+  await NetLoom.setSiteAllowed(host, true);
+  $("allowHost").value = "";
+});
+$("allowHost").addEventListener("keydown", e => { if (e.key === "Enter") $("allowAdd").click(); });
 $("listsUpdate").addEventListener("click", async e => {
   e.target.disabled = true;
   e.target.textContent = "Загружаю…";
