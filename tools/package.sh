@@ -70,7 +70,7 @@ PY
     fi
     "$MT/dmg/dmg" extract "$ENGINE" "$STAGE/engine.hfs" >/dev/null
     mkdir -p "$STAGE/img"
-    "$MT/dmg/hfsplus" "$STAGE/engine.hfs" extractall / "$STAGE/img"
+    "$MT/dmg/hfsplus" "$STAGE/engine.hfs" extractall / "$STAGE/img" >/dev/null
     rm -f "$STAGE/engine.hfs"
     BUNDLE="$(cd "$STAGE/img" && ls -d *.app | head -1)"
     mv "$STAGE/img/$BUNDLE" "$STAGE/NetLoom.app"
@@ -295,7 +295,7 @@ PY
     SIZE=$(( $(du -s -k "$DMGROOT" | cut -f1) / 1000 * 102 / 100 + 16 ))
     dd if=/dev/zero of="$HFS" bs=1M count=$SIZE status=none
     "$MT/hfsplus/newfs_hfs" -v NetLoom "$HFS"
-    "$MT/dmg/hfsplus" "$HFS" addall "$DMGROOT"
+    "$MT/dmg/hfsplus" "$HFS" addall "$DMGROOT" >/dev/null
     "$MT/dmg/hfsplus" "$HFS" symlink "/ " /Applications
     "$MT/dmg/dmg" build "$HFS" "$OUT/$NAME" >/dev/null
     rm -f "$HFS"
