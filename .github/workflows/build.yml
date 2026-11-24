@@ -53,21 +53,24 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           ENGINES="$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --paginate \
             --jq '.[] | select(.tag_name | startswith("engine-")) | .tag_name' | sort -V -r)"
-          PACKED="$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq ".[] | select(.tag_name == \"$TAG\") | .assets[] | \"\\(.name)\\t\\(.label)\"")"
+          PACKED="$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq ".[] | select(.tag_name == \"$TAG\") | .assets[] | \"\\(.name)\\t\\(.label)\\t\\(.updated_at)\"")"
           for p in win64 linux64 mac; do
             case $p in
               win64)   want='-win64\.zip$';         main="NetLoom-$VER-windows-x64-setup.exe" ;;
               linux64) want='-linux64\.tar\.[a-z0-9]+$'; main="netloom_${VER}_amd64.deb" ;;
               mac)     want='-mac-universal\.dmg$'; main="NetLoom-$VER-macos-universal.dmg" ;;
             esac
-            found=""
+            found=""; engine_time=""
             for e in $ENGINES; do
-              if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$e" --jq '.assets[].name' | grep -Eq -e "$want"; then found="$e"; break; fi
+              engine_time="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$e" --jq '.assets[] | "\(.name)\t\(.updated_at)"' | grep -E -e "${want%\$}"$'\t' | cut -f2 | head -1)"
+              if [ -n "$engine_time" ]; then found="$e"; break; fi
             done
             if [ -z "$found" ]; then echo "$p: движок ещё не собран"; echo "$p=" >> "$GITHUB_OUTPUT"; continue; fi
             ev="${found#engine-}"
             label="$(awk -F'\t' -v n="$main" '$1 == n { print $2 }' <<<"$PACKED")"
-            if [ "$EVENT" = "workflow_run" ] && grep -q "движок $ev" <<<"$label"; then
+            packed_time="$(awk -F'\t' -v n="$main" '$1 == n { print $3 }' <<<"$PACKED")"
+            # пересобираем, если движок новее готового пакета (например, движок той же версии собран заново)
+            if [ "$EVENT" = "workflow_run" ] && grep -q "движок $ev" <<<"$label" && [[ "$engine_time" < "$packed_time" ]]; then
               echo "$p: уже собран на движке $ev"; echo "$p=" >> "$GITHUB_OUTPUT"
             else
               echo "$p: собираю на движке $ev"; echo "$p=$found" >> "$GITHUB_OUTPUT"
