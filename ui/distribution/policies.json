@@ -76,6 +76,7 @@
     "HttpsOnlyMode": "enabled",
     "DisableAppUpdate": true,
     "DisableSystemAddonUpdate": false,
-    "DisableProfileImport": false
+    "DisableProfileImport": false,
+    "SkipTermsOfUse": true
   }
 }
