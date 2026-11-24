@@ -117,7 +117,7 @@ async function httpGet(url, { userAgent } = {}) {
 function tcpPing(host, port, timeoutMs = 4000) {
   return new Promise(resolve => {
     let done = false, transport = null, timer = null;
-    const start = Cu.now();
+    const start = Date.now();
     const finish = ms => {
       if (done) return;
       done = true;
@@ -130,7 +130,7 @@ function tcpPing(host, port, timeoutMs = 4000) {
       transport = sts.createTransport([], host, port, null, null);
       transport.setEventSink({
         onTransportStatus(t, status) {
-          if (status === Ci.nsISocketTransport.STATUS_CONNECTED_TO) finish(Math.round(Cu.now() - start));
+          if (status === Ci.nsISocketTransport.STATUS_CONNECTED_TO) finish(Math.round(Date.now() - start));
         },
         QueryInterface: ChromeUtils.generateQI(["nsITransportEventSink"]),
       }, Services.tm.mainThread);
@@ -267,7 +267,7 @@ export const NetLoom = {
   },
 
   async loadFilters() {
-    const t = Cu.now();
+    const t = Date.now();
     const engine = new NCFilters.Engine({});
     const texts = [];
     for (const L of LISTS) {
@@ -279,11 +279,11 @@ export const NetLoom = {
     this.engineStats = engine.stats();
     this.cosmeticCache.clear();
     await this.applyStylesheet();
-    this.log("фильтры: " + JSON.stringify(this.engineStats) + ", " + Math.round(Cu.now() - t) + " мс");
+    this.log("фильтры: " + JSON.stringify(this.engineStats) + ", " + Math.round(Date.now() - t) + " мс");
   },
 
   async loadSecurity() {
-    const t = Cu.now();
+    const t = Date.now();
     const lists = [];
     for (const L of SECURITY_LISTS) {
       const text = await this.readList(L.id);
@@ -294,7 +294,7 @@ export const NetLoom = {
     }
     this.security = lists;
     this.securityCount = lists.reduce((n, x) => n + x.list.count, 0);
-    this.log("защита: списков " + lists.length + ", адресов " + this.securityCount + ", " + Math.round(Cu.now() - t) + " мс");
+    this.log("защита: списков " + lists.length + ", адресов " + this.securityCount + ", " + Math.round(Date.now() - t) + " мс");
   },
 
   /** Опасен ли адрес: возвращает "malware" | "phishing" или null */
