@@ -478,7 +478,6 @@ public class MainActivity extends Activity implements Engine.Listener {
     if (page) m.add(0, 7, 0, "Поделиться");
     if (page) m.add(0, 8, 0, "Скопировать адрес");
     if (current != null) m.add(0, 9, 0, current.desktop ? "Мобильная версия сайта" : "Версия для компьютера");
-    if (page && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) m.add(0, 12, 0, "Видео в отдельном окне");
     m.add(0, 10, 0, "Настройки и VPN");
     m.add(0, 11, 0, "Выход");
     pm.setOnMenuItemClickListener(
@@ -495,7 +494,6 @@ public class MainActivity extends Activity implements Engine.Listener {
             case 9: toggleDesktop(); break;
             case 10: openSettings(null); break;
             case 11: exit(); break;
-            case 12: enterVideoWindow(); break;
             default: return false;
           }
           return true;

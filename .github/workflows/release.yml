@@ -153,10 +153,18 @@ jobs:
           $p = Start-Process "$dir\netloom.exe" -ArgumentList "--headless","--screenshot","$env:RUNNER_TEMP\shot.png","about:blank" -PassThru
           if (-not $p.WaitForExit(120000)) { $p.Kill(); throw "браузер не завершился" }
           if (-not (Test-Path "$env:RUNNER_TEMP\shot.png")) { throw "браузер не запустился" }
+          $data = "$env:APPDATA\NetLoom", "$env:LOCALAPPDATA\NetLoom"
+          if (-not (Get-ChildItem "$env:APPDATA\NetLoom" -Recurse -Filter prefs.js -ErrorAction SilentlyContinue)) { throw "профиль не найден в $env:APPDATA\NetLoom" }
+          # обновление — установка поверх: профиль (пароли, закладки) должен остаться
+          Start-Process (Resolve-Path dl\NetLoom-setup.exe) -ArgumentList "/S" -Wait
+          if (-not (Get-ChildItem "$env:APPDATA\NetLoom" -Recurse -Filter prefs.js -ErrorAction SilentlyContinue)) { throw "обновление стёрло профиль" }
+          # удаление — вместе с данными
           Start-Process "$dir\uninstall.exe" -ArgumentList "/S" -Wait
           Start-Sleep -Seconds 5
           if (Test-Path "$dir\netloom.exe") { throw "не удалился" }
-          "установка, запуск и удаление — в порядке"
+          foreach ($d in $data) { if (Test-Path $d) { Get-ChildItem $d -Recurse | Select-Object -First 20 FullName; throw "после удаления остались данные: $d" } }
+          if (Test-Path "HKCU:\Software\NetLoom") { throw "после удаления остался раздел реестра Software\NetLoom" }
+          "установка, запуск, обновление и удаление с данными — в порядке"
 
   linux:
     name: Linux

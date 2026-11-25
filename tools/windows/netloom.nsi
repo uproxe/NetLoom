@@ -52,6 +52,7 @@ VIAddVersionKey /LANG=1049 "LegalCopyright" "NetLoom. MPL 2.0"
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
+!define MUI_UNCONFIRMPAGE_TEXT_TOP "NetLoom будет удалён вместе со всеми данными: закладками, паролями, историей, VPN-серверами и настройками. Восстановить их будет нельзя."
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_LANGUAGE "Russian"
@@ -183,7 +184,10 @@ Section "Uninstall"
   DeleteRegKey HKCU "${UNINST}"
   DeleteRegKey HKCU "Software\NetLoom"
 
-  ; закладки, пароли и настройки остаются в профиле (%APPDATA%\NetLoom) — их не трогаем
+  ; данные браузера (профиль: закладки, пароли, история, VPN-серверы, настройки; кэш) удаляем целиком,
+  ; чтобы после новой установки ничего не вернулось. Обновление (установщик поверх) их не трогает.
+  RMDir /r "$APPDATA\NetLoom"
+  RMDir /r "$LOCALAPPDATA\NetLoom"
   RMDir /r "$INSTDIR"
   System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0, p 0, p 0)'
 SectionEnd

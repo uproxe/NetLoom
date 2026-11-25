@@ -4,6 +4,16 @@
     "DisableFirefoxStudies": true,
     "DisableFirefoxAccounts": true,
     "DisablePocket": true,
+    "BlockAboutAddons": true,
+    "ExtensionSettings": {
+      "*": {
+        "installation_mode": "blocked",
+        "blocked_install_message": "В NetLoom нельзя устанавливать расширения: блокировка рекламы и VPN уже встроены."
+      }
+    },
+    "InstallAddonsPermission": {
+      "Default": false
+    },
     "DisableFeedbackCommands": true,
     "DisableDefaultBrowserAgent": true,
     "DontCheckDefaultBrowser": true,
