@@ -106,8 +106,15 @@
 #context-pocket,
 #context-savelinktopocket,
 #appMenu-fxa-status2,
+#taskbar-tabs-button,
 #toolbar-context-customize {
   display: none !important;
+}
+
+/* ───── окно «Защита сайта» (замок в адресной строке): цвета NetLoom вместо фиолетовых ───── */
+#trustpanel-popup {
+  --trustpanel-highlight-bg: var(--nl-accent-soft) !important;
+  --trustpanel-inner-border: 1px solid var(--nl-border) !important;
 }
 
 /* ───── вкладки ───── */

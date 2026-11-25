@@ -168,8 +168,7 @@
     try {
       if (window !== Services.wm.getMostRecentWindow("navigator:browser")) return;
       if (!Services.prefs.getBoolPref("netloom.primaryPassword.prompt", true)) return;
-      const token = Cc["@mozilla.org/security/pk11tokendb;1"].getService(Ci.nsIPK11TokenDB).getInternalKeyToken();
-      if (!token.hasPassword && !NetLoom._askedPrimaryPassword) {
+      if (!LoginHelper.isPrimaryPasswordSet() && !NetLoom._askedPrimaryPassword) {
         NetLoom._askedPrimaryPassword = true;
         window.openDialog("chrome://mozapps/content/preferences/changemp.xhtml", "", "centerscreen,chrome,modal,titlebar");
       }

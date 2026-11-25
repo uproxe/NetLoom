@@ -1,1 +1,35 @@
 content netloom content/
+
+# Картинки движка с лисой и фирменными знаками — заменяем своими
+override chrome://global/skin/illustrations/security-error.svg chrome://netloom/content/img/error.svg
+override chrome://global/skin/illustrations/no-connection.svg chrome://netloom/content/img/offline.svg
+override chrome://global/skin/illustrations/kit-concerned.svg chrome://netloom/content/img/shield-warn.svg
+override chrome://global/skin/illustrations/kit-happy.svg chrome://netloom/content/img/shield-on.svg
+override chrome://global/skin/illustrations/kit-in-circle.svg chrome://netloom/content/img/globe.svg
+override chrome://global/skin/illustrations/shield-check.svg chrome://netloom/content/img/shield-on.svg
+override chrome://global/skin/illustrations/shield-alert.svg chrome://netloom/content/img/shield-warn.svg
+override chrome://global/content/megalist/icons/cpm-fox-illustration.svg chrome://netloom/content/img/key.svg
+override chrome://browser/skin/trustpanel-graphic-enabled.svg chrome://netloom/content/img/shield-on.svg
+override chrome://browser/skin/trustpanel-graphic-warning.svg chrome://netloom/content/img/shield-warn.svg
+override chrome://browser/skin/trustpanel-graphic-disabled.svg chrome://netloom/content/img/shield-off.svg
+override chrome://browser/content/controlcenter/assets/breach-alert-shield-check.svg chrome://netloom/content/img/shield-on.svg
+override chrome://browser/content/controlcenter/assets/breach-alert-shield-warning.svg chrome://netloom/content/img/shield-warn.svg
+override chrome://browser/content/controlcenter/assets/breach-alert-shield-cross.svg chrome://netloom/content/img/shield-danger.svg
+override chrome://browser/content/controlcenter/assets/fox-concern.svg chrome://netloom/content/img/error.svg
+override chrome://browser/content/firefoxview/history-empty.svg chrome://netloom/content/img/globe.svg
+override chrome://browser/content/firefoxview/synced-tabs-empty.svg chrome://netloom/content/img/globe.svg
+override chrome://browser/content/firefoxview/synced-tabs-error.svg chrome://netloom/content/img/error.svg
+override chrome://browser/content/ipprotection/assets/vpn-settings-get-started.svg chrome://netloom/content/img/globe.svg
+override chrome://browser/skin/sidebar/foxy.svg chrome://netloom/content/img/globe.svg
+override chrome://browser/skin/addons/extensions-panel-empty-illustration.svg chrome://netloom/content/img/globe.svg
+override chrome://browser/skin/preferences/fox-ai.svg chrome://netloom/content/img/globe.svg
+override chrome://browser/content/asrouter/assets/smiling-fox-icon.svg chrome://netloom/content/img/globe.svg
+override chrome://browser/content/asrouter/assets/fox-with-devices.svg chrome://netloom/content/img/globe.svg
+override chrome://browser/content/asrouter/assets/fox-with-locked-box.svg chrome://netloom/content/img/globe.svg
+override chrome://browser/content/asrouter/assets/fox-with-checkmark.svg chrome://netloom/content/img/globe.svg
+override chrome://browser/content/asrouter/assets/fox-with-box-on-cloud.svg chrome://netloom/content/img/globe.svg
+override chrome://browser/content/asrouter/assets/fox-with-mobile.svg chrome://netloom/content/img/globe.svg
+override chrome://browser/content/asrouter/assets/fox-with-profiles.svg chrome://netloom/content/img/globe.svg
+
+# Пустой список паролей: без инструкций про синхронизацию и учётную запись
+override chrome://browser/content/aboutlogins/components/login-intro.css chrome://netloom/content/logins-intro.css

@@ -1,0 +1,31 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* Пустой список паролей (about:logins). Подменяет стиль движка. */
+:host {
+  padding: var(--space-xxlarge);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+section {
+  line-height: 2;
+}
+
+.description {
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: 0;
+}
+
+.illustration {
+  max-width: 300px;
+  height: 160px;
+}
+
+/* учётных записей и синхронизации нет — инструкции про них не показываем */
+ul,
+a[data-l10n-name="breach-alert-link"] {
+  display: none;
+}

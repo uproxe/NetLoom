@@ -132,8 +132,9 @@ const CLEAR_ON = {
 
 function primaryPasswordSet() {
   try {
-    return Cc["@mozilla.org/security/pk11tokendb;1"].getService(Ci.nsIPK11TokenDB).getInternalKeyToken().hasPassword;
+    return lazy.LoginHelper.isPrimaryPasswordSet();
   } catch (e) {
+    console.error("NetLoom: мастер-пароль", e);
     return false;
   }
 }
