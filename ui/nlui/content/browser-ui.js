@@ -161,6 +161,17 @@
 
   NetLoom.init().then(updateVpn);
 
+  // Окно «мастер-пароль» — поверх текущей вкладки, как в настройках самого движка.
+  // Отдельным окном оно получалось шире экрана (текст не переносился), а на macOS ещё и
+  // прикреплялось к окну браузера и блокировало его кнопки «Свернуть» и «Закрыть».
+  // Не поверх всего окна (gDialogBox): туда же движок выводит «Пароль изменён», и оба окна ждали бы друг друга.
+  function changePrimaryPassword() {
+    return gBrowser.getTabDialogBox(gBrowser.selectedBrowser).open(
+      "chrome://mozapps/content/preferences/changemp.xhtml",
+      { features: "resizable=no", allowDuplicateDialogs: false }
+    ).closedPromise;
+  }
+
   // мастер-пароль обязателен: предложить создать, если его ещё нет
   setTimeout(() => {
     try {
@@ -168,12 +179,12 @@
       if (!Services.prefs.getBoolPref("netloom.primaryPassword.prompt", true)) return;
       if (!LoginHelper.isPrimaryPasswordSet() && !NetLoom._askedPrimaryPassword) {
         NetLoom._askedPrimaryPassword = true;
-        window.openDialog("chrome://mozapps/content/preferences/changemp.xhtml", "", "centerscreen,chrome,modal,titlebar");
+        changePrimaryPassword();
       }
     } catch (e) {
       Services.console.logStringMessage("NetLoom: мастер-пароль: " + e);
     }
   }, 1500);
 
-  window.NetLoomUI = { openSettings, updateVpn };
+  window.NetLoomUI = { openSettings, updateVpn, changePrimaryPassword };
 })();

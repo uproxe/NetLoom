@@ -33,3 +33,6 @@ override chrome://browser/content/asrouter/assets/fox-with-profiles.svg chrome:/
 
 # Пустой список паролей: без инструкций про синхронизацию и учётную запись
 override chrome://browser/content/aboutlogins/components/login-intro.css chrome://netloom/content/logins-intro.css
+
+# Окно мастер-пароля: без «Ваша организация требует…», текст переносится
+override chrome://mozapps/content/preferences/changemp.css chrome://netloom/content/changemp.css

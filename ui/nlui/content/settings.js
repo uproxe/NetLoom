@@ -150,8 +150,12 @@ function renderPrivacy() {
   $("safebrowsing").checked = NetLoom.settings?.security !== false;
 }
 
-$("ppChange").addEventListener("click", () => {
-  topWin().openDialog("chrome://mozapps/content/preferences/changemp.xhtml", "", "centerscreen,chrome,modal,titlebar");
+$("ppChange").addEventListener("click", async () => {
+  try {
+    await topWin().NetLoomUI.changePrimaryPassword();
+  } catch (e) {
+    console.error("NetLoom: мастер-пароль", e);
+  }
   renderPrivacy();
 });
 $("adblock").addEventListener("change", e => NetLoom.setAdblock(e.target.checked));
