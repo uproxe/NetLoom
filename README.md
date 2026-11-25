@@ -28,7 +28,11 @@
 |---|---|---|
 | Windows 10 и 11 | `NetLoom-…-windows-x64-setup.exe` | Запустите установщик. Права администратора не нужны. Если появится «Система Windows защитила ваш компьютер», нажмите «Подробнее» → «Выполнить в любом случае». |
 | macOS 10.15 и новее (M1–M4 и Intel) | `NetLoom-…-macos-universal.dmg` | Перетащите NetLoom в «Программы». При первом запуске: «Системные настройки» → «Конфиденциальность и безопасность» → «Всё равно открыть». |
-| Ubuntu, Debian, Mint, elementary OS | `netloom_…_amd64.deb` | Откройте файл двойным щелчком или выполните `sudo apt install ./netloom_*_amd64.deb`. |
+| Ubuntu, Debian, Mint, Astra, elementary OS | `netloom_…_amd64.deb` | Откройте файл двойным щелчком или выполните `sudo apt install ./netloom_*_amd64.deb`. |
+| Fedora, РЕД ОС, РОСА | `netloom-…x86_64.rpm` | Откройте файл двойным щелчком или выполните `sudo dnf install ./netloom-*.x86_64.rpm`. |
+| openSUSE | `netloom-…x86_64.rpm` | `sudo zypper install --allow-unsigned-rpm ./netloom-*.x86_64.rpm` |
+| Arch, Manjaro, EndeavourOS | `netloom-…x86_64.pkg.tar.zst` | `sudo pacman -U ./netloom-*-x86_64.pkg.tar.zst` |
+| Любой другой Linux | `NetLoom-…-x86_64.AppImage` | Разрешите запуск в свойствах файла (или `chmod +x NetLoom-*.AppImage`) и откройте его. Ставить ничего не нужно. |
 | Android 8 и новее | `NetLoom-…-android-arm64.apk` | Откройте файл на телефоне и разрешите установку из этого источника. |
 
 Предупреждения Windows и macOS появляются потому, что у NetLoom пока нет платной подписи Microsoft и Apple.
@@ -65,7 +69,7 @@ VPN-серверы и настройки. Обновление (установк
 | Общие библиотеки | `ui/nlui/content/lib/` | Движок фильтров (`filters.js`) и разбор ссылок VPN (`links.js`) — общие для компьютера и Android |
 | Android | `android/` | Приложение на GeckoView: свой интерфейс и встроенный модуль на тех же библиотеках |
 | Бренд | `branding/` | Значки в SVG; `tools/make_branding.py` делает из них все картинки движка |
-| Упаковка | `tools/` | Установщик Windows, `.deb`, `.dmg`, сборка Android, замер скорости |
+| Упаковка | `tools/` | Установщик Windows, `.deb`, `.rpm`, пакет Arch, AppImage, `.dmg`, сборка Android, замер скорости |
 
 ### Сборка (GitHub Actions)
 

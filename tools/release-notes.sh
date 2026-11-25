@@ -14,6 +14,7 @@ VER="${TAG#v}"
 
 WIN="NetLoom-$VER-windows-x64-setup.exe"; WINZIP="NetLoom-$VER-windows-x64.zip"
 DEB="netloom_${VER}_amd64.deb"; DMG="NetLoom-$VER-macos-universal.dmg"
+RPM="netloom-$VER-1.x86_64.rpm"; ARCHPKG="netloom-$VER-1-x86_64.pkg.tar.zst"; APPIMAGE="NetLoom-$VER-x86_64.AppImage"
 APK="NetLoom-$VER-android-arm64.apk"; APK32="NetLoom-$VER-android-arm32.apk"
 EV=""
 for f in "$WIN" "$DEB" "$DMG"; do [ -n "$EV" ] || EV="$(engine "$f")"; done
@@ -22,6 +23,15 @@ cat <<TXT
 Приватный браузер со своим интерфейсом, встроенной блокировкой рекламы и VPN.
 Без аккаунтов и телеметрии.${EV:+ Движок Gecko ESR $EV.}
 TXT
+if [ "$VER" = "1.0.4" ]; then cat <<'TXT'
+
+## Что нового в 1.0.4
+
+- **Пакеты для других Linux.** Кроме .deb теперь есть .rpm для Fedora, РЕД ОС, РОСА и openSUSE,
+  пакет для Arch и Manjaro и AppImage, который запускается на любом дистрибутиве без установки.
+  Каждый пакет перед выпуском ставится в настоящий дистрибутив и проверяется запуском.
+TXT
+fi
 if [ "$VER" = "1.0.3" ]; then cat <<'TXT'
 
 ## Что нового в 1.0.3
@@ -68,7 +78,10 @@ cat <<TXT
 TXT
 has "$WIN"    && echo "| Windows 10 и 11 (64 бит) | [Установщик]($(link "$WIN")) | $(size "$WIN") |"
 has "$WINZIP" && echo "| Windows без установки | [Архив .zip]($(link "$WINZIP")) | $(size "$WINZIP") |"
-has "$DEB"    && echo "| Linux: Ubuntu, Debian, Mint, elementary OS | [Пакет .deb]($(link "$DEB")) | $(size "$DEB") |"
+has "$DEB"    && echo "| Linux: Ubuntu, Debian, Mint, Astra, elementary OS | [Пакет .deb]($(link "$DEB")) | $(size "$DEB") |"
+has "$RPM"    && echo "| Linux: Fedora, РЕД ОС, РОСА, openSUSE | [Пакет .rpm]($(link "$RPM")) | $(size "$RPM") |"
+has "$ARCHPKG" && echo "| Linux: Arch, Manjaro, EndeavourOS | [Пакет .pkg.tar.zst]($(link "$ARCHPKG")) | $(size "$ARCHPKG") |"
+has "$APPIMAGE" && echo "| Linux: любой дистрибутив, без установки | [AppImage]($(link "$APPIMAGE")) | $(size "$APPIMAGE") |"
 has "$DMG"    && echo "| macOS 10.15 и новее (Apple M1–M4 и Intel) | [Образ .dmg]($(link "$DMG")) | $(size "$DMG") |"
 has "$APK"    && echo "| Android 8 и новее (64 бит) | [Приложение .apk]($(link "$APK")) | $(size "$APK") |"
 has "$APK32"  && echo "| Android, старые 32-битные телефоны | [Приложение .apk]($(link "$APK32")) | $(size "$APK32") |"
@@ -82,8 +95,14 @@ cat <<'TXT'
 «Выполнить в любом случае» (у NetLoom пока нет платной цифровой подписи).
 Чтобы сделать NetLoom браузером по умолчанию: «Настройки» NetLoom → «Основное».
 
-**Linux.** Откройте файл .deb двойным щелчком (Центр приложений) или в терминале:
-`sudo apt install ./netloom_*_amd64.deb`
+**Linux.** Выберите файл под свой дистрибутив и откройте его двойным щелчком (Центр приложений)
+или поставьте в терминале:
+- Ubuntu, Debian, Mint, Astra, elementary OS: `sudo apt install ./netloom_*_amd64.deb`
+- Fedora, РЕД ОС, РОСА: `sudo dnf install ./netloom-*.x86_64.rpm`
+- openSUSE: `sudo zypper install --allow-unsigned-rpm ./netloom-*.x86_64.rpm`
+- Arch, Manjaro, EndeavourOS: `sudo pacman -U ./netloom-*-x86_64.pkg.tar.zst`
+- любой другой: скачайте AppImage, в свойствах файла разрешите запуск (или `chmod +x NetLoom-*.AppImage`)
+  и откройте его. Ставить ничего не нужно, но в меню программ он сам не появится.
 
 **macOS.** Откройте образ и перетащите NetLoom в «Программы». При первом запуске
 macOS предупредит, что не может проверить программу (у NetLoom нет платного

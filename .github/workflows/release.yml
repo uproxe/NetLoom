@@ -1,7 +1,7 @@
 name: Выпуск
 
 # Собирает NetLoom для людей и выкладывает в Releases:
-#   Windows — установщик и архив, Linux — .deb, macOS — .dmg (Apple Silicon и Intel), Android — .apk.
+#   Windows — установщик и архив, Linux — .deb, .rpm, пакет Arch и AppImage, macOS — .dmg (Apple Silicon и Intel), Android — .apk.
 # Когда запускается:
 #   • изменилась версия (файл VERSION) или запуск вручную — собирается всё;
 #   • собран новый движок (исправления безопасности) — пересобираются Windows, Linux и macOS;
@@ -171,25 +171,58 @@ jobs:
     needs: prepare
     if: needs.prepare.outputs.linux64 != ''
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - name: Сборка
         run: |
+          sudo apt-get -o Acquire::Retries=3 update
+          sudo apt-get install -y rpm libarchive-tools zstd
           gh release download "${{ needs.prepare.outputs.linux64 }}" --dir engine-dl --pattern '*-linux64.tar.*'
           bash tools/package.sh linux64 "$(ls engine-dl/netloom-engine-*-linux64.tar.* | head -1)" dist
-      - name: Проверка пакета
+      - name: Проверка .deb (Ubuntu)
         run: |
           VER="$(cat VERSION)"
-          sudo apt-get -o Acquire::Retries=3 update
           sudo apt-get install -y "./dist/netloom_${VER}_amd64.deb"
           timeout 120 netloom --headless --screenshot /tmp/shot.png about:blank && test -s /tmp/shot.png
           sudo apt-get remove -y netloom
+      # каждый пакет ставим в настоящий дистрибутив, запускаем браузер и удаляем
+      - name: Проверка .rpm (Fedora)
+        run: |
+          VER="$(cat VERSION)"
+          docker run --rm -v "$PWD/dist:/d:ro" fedora:latest bash -ec "
+            dnf -y -q install /d/netloom-$VER-1.x86_64.rpm
+            timeout 180 netloom --headless --screenshot /tmp/s.png about:blank; test -s /tmp/s.png
+            dnf -y -q remove netloom; test ! -e /usr/lib/netloom; echo 'Fedora — в порядке'"
+      - name: Проверка .rpm (openSUSE)
+        run: |
+          VER="$(cat VERSION)"
+          docker run --rm -v "$PWD/dist:/d:ro" opensuse/tumbleweed bash -ec "
+            zypper -n -q --no-gpg-checks install --allow-unsigned-rpm /d/netloom-$VER-1.x86_64.rpm
+            timeout 180 netloom --headless --screenshot /tmp/s.png about:blank; test -s /tmp/s.png
+            echo 'openSUSE — в порядке'"
+      - name: Проверка пакета Arch
+        run: |
+          VER="$(cat VERSION)"
+          docker run --rm -v "$PWD/dist:/d:ro" archlinux:latest bash -ec "
+            pacman -Syu --noconfirm >/dev/null
+            pacman -U --noconfirm /d/netloom-$VER-1-x86_64.pkg.tar.zst
+            timeout 180 netloom --headless --screenshot /tmp/s.png about:blank; test -s /tmp/s.png
+            pacman -R --noconfirm netloom; test ! -e /usr/lib/netloom; echo 'Arch — в порядке'"
+      - name: Проверка AppImage
+        run: |
+          VER="$(cat VERSION)"; AI="dist/NetLoom-$VER-x86_64.AppImage"
+          test -x "$AI"
+          APPIMAGE_EXTRACT_AND_RUN=1 timeout 180 "$AI" --headless --screenshot /tmp/ai.png about:blank
+          test -s /tmp/ai.png && echo 'AppImage — в порядке'
       - name: Публикация
         run: |
           VER="$(cat VERSION)"; EV="$(cat dist/ENGINE_VERSION)"
           gh release upload "${{ needs.prepare.outputs.tag }}" --clobber \
-            "dist/netloom_${VER}_amd64.deb#Linux — пакет .deb для Ubuntu, Debian, Mint, elementary OS (движок $EV)"
+            "dist/netloom_${VER}_amd64.deb#Linux — пакет .deb для Ubuntu, Debian, Mint, Astra, elementary OS (движок $EV)" \
+            "dist/netloom-${VER}-1.x86_64.rpm#Linux — пакет .rpm для Fedora, РЕД ОС, РОСА, openSUSE (движок $EV)" \
+            "dist/netloom-${VER}-1-x86_64.pkg.tar.zst#Linux — пакет для Arch и Manjaro (движок $EV)" \
+            "dist/NetLoom-${VER}-x86_64.AppImage#Linux — AppImage для любого дистрибутива (движок $EV)"
 
   mac:
     name: macOS

@@ -3,7 +3,9 @@
 #
 #   bash tools/package.sh <платформа> <файл движка> [папка результата]
 #     win64    (на Linux)  → NetLoom-<v>-windows-x64-setup.exe и NetLoom-<v>-windows-x64.zip
-#     linux64  (на Linux)  → netloom_<v>_amd64.deb
+#     linux64  (на Linux)  → netloom_<v>_amd64.deb, netloom-<v>-1.x86_64.rpm,
+#                             netloom-<v>-1-x86_64.pkg.tar.zst (Arch) и NetLoom-<v>-x86_64.AppImage
+#                             нужны: dpkg-deb, rpmbuild (пакет rpm), bsdtar (libarchive-tools), zstd
 #     mac      (на Linux или macOS) → NetLoom-<v>-macos-universal.dmg
 #
 # Скрипт совместим со старым bash 3.2 из macOS.
@@ -229,6 +231,45 @@ linux64)
   find "$PKG" -type d -exec chmod 755 {} +
   dpkg-deb --root-owner-group -Zxz --build "$PKG" "$OUT/netloom_${VER}_amd64.deb"
   dpkg-deb --info "$OUT/netloom_${VER}_amd64.deb"
+
+  # то же дерево файлов — в пакеты других дистрибутивов
+  step "Linux: пакет .rpm (Fedora, РЕД ОС, РОСА, openSUSE)"
+  rpmbuild -bb --quiet \
+    --define "nl_version $VER" --define "nl_root $PKG" \
+    --define "_topdir $STAGE/rpmbuild" --define "_rpmdir $OUT" \
+    "$ROOT/tools/linux/netloom.spec"
+  rpm -qip "$OUT/netloom-$VER-1.x86_64.rpm" | head -12
+
+  step "Linux: пакет для Arch и Manjaro"
+  ARCH_ROOT="$STAGE/arch"; mkdir -p "$ARCH_ROOT"
+  cp -a "$PKG/usr" "$ARCH_ROOT/usr"
+  mkdir -p "$ARCH_ROOT/usr/share/licenses/netloom"
+  mv "$ARCH_ROOT/usr/share/doc/netloom/THIRD-PARTY.txt" "$ARCH_ROOT/usr/share/licenses/netloom/THIRD-PARTY.txt"
+  rmdir "$ARCH_ROOT/usr/share/doc/netloom" "$ARCH_ROOT/usr/share/doc"
+  sed -e "s/@VERSION@/$VER/" -e "s/@DATE@/$(date +%s)/" -e "s/@SIZE@/$(du -sb "$ARCH_ROOT/usr" | cut -f1)/" \
+    "$ROOT/tools/linux/PKGINFO" > "$ARCH_ROOT/.PKGINFO"
+  OWN=(--uid 0 --gid 0 --uname root --gname root)
+  (cd "$ARCH_ROOT" &&
+    LANG=C bsdtar "${OWN[@]}" -czf .MTREE --format=mtree \
+      --options='!all,use-set,type,uid,gid,mode,time,size,md5,sha256,link' .PKGINFO usr &&
+    LANG=C bsdtar "${OWN[@]}" --no-fflags -cf - .PKGINFO .MTREE usr | zstd -q -T0 -19 -o "$OUT/netloom-$VER-1-x86_64.pkg.tar.zst")
+  bsdtar -xOf "$OUT/netloom-$VER-1-x86_64.pkg.tar.zst" .PKGINFO | grep -E '^(pkgname|pkgver|size) '
+
+  step "Linux: AppImage (любой дистрибутив, без установки)"
+  LT="${NETLOOM_LINUX_TOOLS:-$HOME/linux-tools}"; mkdir -p "$LT"
+  GH="https://github.com/AppImage"
+  [ -x "$LT/appimagetool" ] || { curl -fsSL --retry 5 -o "$LT/appimagetool" "$GH/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage" && chmod +x "$LT/appimagetool"; }
+  [ -s "$LT/runtime-x86_64" ] || curl -fsSL --retry 5 -o "$LT/runtime-x86_64" "$GH/type2-runtime/releases/download/continuous/runtime-x86_64"
+  APPDIR="$STAGE/NetLoom.AppDir"; mkdir -p "$APPDIR"
+  cp -a "$PKG/usr" "$APPDIR/usr"
+  install -m 755 "$ROOT/tools/linux/AppRun" "$APPDIR/AppRun"
+  cp "$ROOT/tools/linux/netloom.desktop" "$APPDIR/netloom.desktop"
+  cp "$ROOT/engine/branding/default256.png" "$APPDIR/netloom.png"
+  ln -s netloom.png "$APPDIR/.DirIcon"
+  rm -f "$OUT/NetLoom-$VER-x86_64.AppImage"
+  APPIMAGE_EXTRACT_AND_RUN=1 ARCH=x86_64 "$LT/appimagetool" -n --comp zstd \
+    --runtime-file "$LT/runtime-x86_64" "$APPDIR" "$OUT/NetLoom-$VER-x86_64.AppImage"
+  ls -la "$OUT"
   ;;
 mac)
   step "macOS: значок, подпись и образ .dmg"
